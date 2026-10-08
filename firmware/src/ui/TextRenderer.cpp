@@ -75,15 +75,15 @@ bool tryTwoLines(lgfx::LovyanGFX& g, std::string_view text, int scale, bool word
 
 }  // namespace
 
-int drawFittedC64(lgfx::LovyanGFX& g, std::string_view text, const Box& box, uint16_t color) {
+int drawFittedC64(lgfx::LovyanGFX& g, std::string_view text, const Box& box, uint16_t color, int maxScale) {
   if (text.size() > kMaxText) text = text.substr(0, kMaxText);
   int bottom = box.y;
   // Largest first. Two lines at 3x read better than one line at 2x ("SUPER / NINTENDO").
-  if (tryOneLine(g, text, 4, box, color, &bottom)) return bottom;
-  if (tryOneLine(g, text, 3, box, color, &bottom)) return bottom;
-  if (tryTwoLines(g, text, 3, true, box, color, &bottom)) return bottom;
-  if (tryOneLine(g, text, 2, box, color, &bottom)) return bottom;
-  if (tryTwoLines(g, text, 2, false, box, color, &bottom)) return bottom;
+  if (maxScale >= 4 && tryOneLine(g, text, 4, box, color, &bottom)) return bottom;
+  if (maxScale >= 3 && tryOneLine(g, text, 3, box, color, &bottom)) return bottom;
+  if (maxScale >= 3 && tryTwoLines(g, text, 3, true, box, color, &bottom)) return bottom;
+  if (maxScale >= 2 && tryOneLine(g, text, 2, box, color, &bottom)) return bottom;
+  if (maxScale >= 2 && tryTwoLines(g, text, 2, false, box, color, &bottom)) return bottom;
   if (tryTwoLines(g, text, 1, false, box, color, &bottom)) return bottom;
 
   // Still too long: one line at 1x, cut with "..".

@@ -23,6 +23,8 @@ class SerialTransport {
   bool write(const char* text, size_t length);
   bool write(const char* text);
 
+  size_t writeRoom() const { return kTxQueueBytes - txUsed(); }
+
   uint32_t droppedWrites() const { return droppedWrites_; }
   uint32_t staleFlushes() const { return staleFlushes_; }
 

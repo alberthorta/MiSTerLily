@@ -65,3 +65,11 @@ void DisplayManager::wake() {
 int DisplayManager::width() const { return cfg::kScreenWidth; }
 
 int DisplayManager::height() const { return cfg::kScreenHeight; }
+
+const uint8_t* DisplayManager::framebufferBytes() const {
+  return framebufferOk_ ? static_cast<const uint8_t*>(const_cast<LGFX_Sprite&>(frame_).getBuffer()) : nullptr;
+}
+
+size_t DisplayManager::framebufferSize() const {
+  return framebufferOk_ ? static_cast<size_t>(cfg::kScreenWidth) * cfg::kScreenHeight * 2 : 0;
+}

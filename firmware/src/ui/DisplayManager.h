@@ -23,6 +23,9 @@ class DisplayManager {
   int width() const;
   int height() const;
   bool hasFramebuffer() const { return framebufferOk_; }
+  // Raw framebuffer: RGB565, big-endian per pixel (LovyanGFX sprite layout), row-major.
+  const uint8_t* framebufferBytes() const;
+  size_t framebufferSize() const;
 
  private:
   Lgfx lcd_;

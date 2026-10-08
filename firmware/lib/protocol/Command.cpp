@@ -32,6 +32,7 @@ constexpr Keyword kExact[] = {
     {"CMDSHTIME", CommandId::ShowTime},
     {"MDSPING", CommandId::MdsPing},
     {"MDSINFO", CommandId::MdsInfo},
+    {"MDSSHOT", CommandId::MdsShot},
 };
 
 // Prefix matches (newCommand.startsWith("...")), checked in the sketch's order.

@@ -36,6 +36,8 @@ class App : public proto::ParserListener {
   void sendHardwareInfo();
   void sendInfo();
   void ack();
+  void startScreenshot();
+  void pumpScreenshot(uint32_t nowMs);
 
   DisplayManager& display_;
   SerialTransport& transport_;
@@ -43,9 +45,14 @@ class App : public proto::ParserListener {
 
   char coreName_[kMaxCoreName + 1] = {};
   size_t coreNameLength_ = 0;
-  // The last received picture (CMDCOR/CMDAPD), kept for CMDSPIC. Drawn from phase 4 on.
+  // The last received picture (CMDCOR/CMDAPD), kept for CMDSPIC.
   uint8_t picture_[proto::kImageBufferBytes] = {};
   proto::ImageFormat pictureFormat_ = proto::ImageFormat::None;
+
+  // Screenshot being streamed out (MDSSHOT), a little per loop.
+  const uint8_t* shotData_ = nullptr;
+  size_t shotLeft_ = 0;
+  uint32_t shotProgressMs_ = 0;
 
   bool sendTtyAck_ = true;
   bool restartPending_ = false;

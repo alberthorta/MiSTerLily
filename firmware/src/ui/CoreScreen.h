@@ -1,7 +1,11 @@
 #pragma once
 
+#include <stddef.h>
+#include <stdint.h>
+
 #include <string_view>
 
+#include "ProtocolParser.h"
 #include "ui/DisplayManager.h"
 
 namespace CoreScreen {
@@ -9,5 +13,10 @@ namespace CoreScreen {
 // Text-only core screen: the system name, large and centered. When the friendly name differs
 // from the MiSTer core name (PSX -> PlayStation), the core name is shown small underneath.
 void drawNameOnly(DisplayManager& display, std::string_view coreName);
+
+// tty2oled artwork (256x64, 1:1) in the upper part, the name smaller below it (many logos
+// already contain the name). Falls back to drawNameOnly() if the picture is not valid.
+void drawWithArtwork(DisplayManager& display, std::string_view coreName, proto::ImageFormat format,
+                     const uint8_t* data, size_t length);
 
 }  // namespace CoreScreen

@@ -14,6 +14,8 @@
 namespace {
 
 constexpr size_t kReadChunkBytes = 512;
+// A screenshot the host stops reading is abandoned after this long without progress.
+constexpr uint32_t kShotStallMs = 1000;
 // Lets the "ttyack;" of CMDRESET leave before the chip restarts.
 constexpr uint32_t kRestartDelayMs = 100;
 
@@ -46,6 +48,7 @@ void App::loop() {
     parser_.feed(buffer, n, millis());
   }
   parser_.poll(millis());
+  pumpScreenshot(millis());
   transport_.poll(millis());
 
   if (restartPending_ && static_cast<int32_t>(millis() - restartAtMs_) >= 0) {
@@ -163,6 +166,9 @@ void App::handle(const proto::Command& cmd, std::string_view line) {
     case CommandId::MdsInfo:
       sendInfo();
       break;
+    case CommandId::MdsShot:
+      startScreenshot();
+      break;
     case CommandId::SetTtyAck: {
       int32_t v = 1;
       if (proto::parseInt(cmd.args, v)) sendTtyAck_ = v != 0;
@@ -186,8 +192,13 @@ void App::setCore(std::string_view name) {
 }
 
 void App::showCore() {
-  // Phase 4 draws the picture when pictureFormat_ != None.
-  CoreScreen::drawNameOnly(display_, std::string_view(coreName_, coreNameLength_));
+  const std::string_view name(coreName_, coreNameLength_);
+  if (pictureFormat_ == proto::ImageFormat::None) {
+    CoreScreen::drawNameOnly(display_, name);
+    return;
+  }
+  const size_t length = pictureFormat_ == proto::ImageFormat::Xbm ? proto::kXbmBytes : proto::kGscBytes;
+  CoreScreen::drawWithArtwork(display_, name, pictureFormat_, picture_, length);
 }
 
 void App::showSplash() { SplashScreen::draw(display_, "v" MDS_FW_VERSION); }
@@ -232,6 +243,37 @@ void App::sendInfo() {
                          (unsigned long)transport_.droppedWrites(), (unsigned long)transport_.staleFlushes(),
                          (int)lastImageResult_, (unsigned)lastImageBytes_, coreName_);
   if (n > 0) transport_.write(line, static_cast<size_t>(n) < sizeof(line) ? n : sizeof(line) - 1);
+}
+
+void App::startScreenshot() {
+  if (shotLeft_ > 0 || !display_.hasFramebuffer()) {
+    transport_.write("MDSSHOT,0,0,0\n");
+    return;
+  }
+  char header[48];
+  const int n = snprintf(header, sizeof(header), "MDSSHOT,%d,%d,%u\n", display_.width(), display_.height(),
+                         (unsigned)display_.framebufferSize());
+  if (n <= 0 || !transport_.write(header, n)) return;
+  shotData_ = display_.framebufferBytes();
+  shotLeft_ = display_.framebufferSize();
+  shotProgressMs_ = millis();
+}
+
+void App::pumpScreenshot(uint32_t nowMs) {
+  if (shotLeft_ == 0) return;
+  // Leave room so acks and replies are never refused while a screenshot is going out.
+  constexpr size_t kReserve = 128;
+  const size_t room = transport_.writeRoom();
+  if (room > kReserve) {
+    size_t n = room - kReserve;
+    if (n > shotLeft_) n = shotLeft_;
+    transport_.write(reinterpret_cast<const char*>(shotData_), n);
+    shotData_ += n;
+    shotLeft_ -= n;
+    shotProgressMs_ = nowMs;
+  } else if (nowMs - shotProgressMs_ >= kShotStallMs) {
+    shotLeft_ = 0;
+  }
 }
 
 void App::ack() {
