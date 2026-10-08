@@ -95,7 +95,7 @@ MDSIMG,<bytes>,<crc32>,<png|jpg>,<core>\n
 | `MDSCFG,idle,<minutes>` | Backlight off after `<minutes>` without a core change or display command (0 = never, the default; max 1440); replies like `MDSCFG` |
 | `MDSCFG,fade,<0\|1>` | Short backlight dip on core changes (default 1). `CMDCOR,<core>,0` skips it for one change |
 | `MDSCFG,idleclock,<0\|1>` | When idle: a dim clock instead of a dark screen (default 0; needs the time) |
-| `MDSCFG,reset` | Default settings (brightness 200, no rotation, no idle sleep, fade on, no idle clock) |
+| `MDSCFG,reset` | Default settings (brightness 255, no rotation, no idle sleep, fade on, no idle clock) |
 | `MDSLOGO` | `MDSLOGO;crc=<hex>;bytes=<n>;format=<png\|jpg>\n` or `MDSLOGO;none\n`: the stored start-up picture |
 | `MDSLOGO,<bytes>,<crc32>,<png\|jpg>` + file | Store the start-up picture in flash (same framing as `MDSIMG`, max 256 KB). Reply `MDSLOGO;ok\n` or `MDSLOGO;err=<header\|size\|incomplete\|crc\|format\|storage>\n` |
 | `MDSCFG,logo,0` | Delete the stored start-up picture (back to the text start screen) |
