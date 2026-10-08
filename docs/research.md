@@ -157,21 +157,40 @@ Two options exist in the Arduino core:
 | Reset/flash from host | automatic via DTR/RTS | 1200-baud touch, or BOOT button |
 | RX overflow | ISR drops bytes when the queue is full | `xQueueSend` waits 10 ticks, then drops |
 
-Both drop data on overflow, so neither gives real end-to-end flow control. **Decision: HWCDC**, the default
-of both the PlatformIO and LILYGO board files. Consequences:
+Both drop data on overflow, so neither gives real end-to-end flow control. **Decision: the
+hardware USB Serial/JTAG controller** (`ARDUINO_USB_MODE=1`, the default of both board files), but
+**not through Arduino's HWCDC**. Bench results on the board (2026-10-08, macOS host):
 
-- RX queue defaults to 256 bytes and the ISR drops bytes when it is full
-  (`HWCDC.cpp`: `if(rx_queue == NULL || !xQueueSendFromISR(...)) break;`). We enlarge it with
-  `Serial.setRxBufferSize()` (≥ 16 KB, more than one GSC frame) and drain it in bulk every loop.
-- TX blocks up to `tx_timeout_ms` (100 ms default) per write while the host has the port closed, which is
-  almost always with the upstream daemon. We set a small TX timeout, check `availableForWrite()`, and never
-  let the UI wait on TX.
+| Transport | Result |
+|---|---|
+| Arduino `HWCDC` (`Serial`) | 4 of 5 `MDSINFO` replies never reached the host, although `write()` reported success. Its "connected" state machine stranded data in its TX ring. |
+| ESP-IDF v4.4.7 `usb_serial_jtag` driver | No reply at all until something wrote to the FIFO directly (a ROM `printf`): the install clears `IN_EMPTY`. With a manual FIFO flush after each write, replies still stalled ~10 s after boot (11 of 30 lost, reproducible): when its TX ISR runs with an empty ring it clears `IN_EMPTY` and disables itself. Its RX ISR also drops packets when the ring is full. |
+| **Polling the 64-byte FIFO registers from the main loop** (`hal/usb_serial_jtag_ll.h`) | 0 lost replies in 200 queries and in 3×30 queries right after reset; 100 lines in one write all received; GSC (8192 B) and XBM (2048 B) pictures received complete, also a GSC followed by a command in the same write. |
+
+Polling also gives **real flow control on RX**: bytes stay in the hardware FIFO until we read
+them, and while it is full the controller NAKs the host, which simply retries. A busy loop (drawing)
+can delay the host but cannot lose data. TX goes through a 1 KB RAM queue; replies the host does not
+read within 300 ms are dropped, so stale acks do not pile up.
+
+Other bench facts:
+- `ESP.restart()` (our `CMDRESET`) does **not** re-enumerate: the port stays, an open file descriptor
+  keeps working. So the "termios reset after reconnect" risk does not apply to resets, only to a real
+  unplug. The ROM prints its boot log (`ESP-ROM:esp32s3-...`) on this port after every reset.
+- Opening/closing the port 20 times (DTR/RTS changes) does not reset the board.
+- Up to 64 bytes written while nobody reads stay in the hardware FIFO and reach the next reader first.
+  In practice that is one `ttyack;`. `installer.sh` would then read `ttyack;HWTDISPS3;...` as one line.
+  Our tools send `CMDNULL` and drain before every query.
+- **macOS drops output queued in its CDC driver when the port is closed, even after `tcdrain()`**
+  (8 of 10 lines arrived when closing right away, 10 of 10 after 50 ms). `tools/mdsserial.py` waits
+  100 ms before closing. Linux `cdc-acm` waits for output to drain on close (`closing_wait`), so the
+  per-message `echo > /dev/ttyACM0` of tty2oled.sh should not lose data; to be confirmed on the MiSTer.
+- We do not send the sketch's `ttyrdy;` at boot: nothing upstream reads it, and it would sit in the
+  FIFO in front of the next reply.
 - Nothing unsolicited may appear on the CDC port: `CORE_DEBUG_LEVEL=0`, and our debug log goes to UART0
-  (GPIO43/44, `Serial0`) behind a build flag. A stray log line would break `installer.sh`'s `read -t5`.
-- With `ARDUINO_USB_MODE=1`, `main.cpp` does not call `Serial.begin()`; we do it in `setup()`. Never `while(!Serial)`.
-- The device cannot be identified by its USB strings alone (any ESP32-S3/C3 in this mode looks the same),
-  so detection = VID/PID 303a:1001 **plus** a `CMDHWINF` handshake expecting `HWTDISPS3`. The USB serial
-  number (the MAC) can then pin one specific board.
+  (GPIO43/44, `Serial0`) behind a build flag.
+- The device cannot be identified by its USB strings alone (any ESP32-S3/C3 in this mode looks the same:
+  303a:1001 "USB JTAG/serial debug unit", manufacturer "Espressif", serial = MAC, e.g.
+  `C0:4E:30:0B:D2:84`). Detection = VID/PID **plus** a `CMDHWINF` handshake expecting `HWTDISPS3`.
 
 ### Linux device name
 
@@ -182,16 +201,11 @@ of both the PlatformIO and LILYGO board files. Consequences:
   `/dev/serial/by-id` exists (it needs udev; not confirmed on MiSTer).
 - On macOS it appears as `/dev/cu.usbmodem<location>`.
 
-### Open questions for the hardware checkpoint
+### Still open (needs the MiSTer)
 
-1. Does `ESP.restart()` (our `CMDRESET`) make the CDC device disappear and re-enumerate? If it does,
-   the new node comes back with default termios (cooked, `onlcr`, echo, `hupcl`). Then an image byte
-   `0x0A` would be sent as `0x0D 0x0A` and the device would get its own `ttyack;` echoed back as a
-   "core name". The upstream daemon only runs `stty` once at start. Our own daemon must re-apply `stty`
-   whenever the node changes.
-2. Does opening/closing the port (`echo > port` with `-hupcl`) ever reset the chip through the
-   DTR/RTS reset logic? Linux `cdc_acm` sets DTR and RTS in one request, so it should not, but this must
-   be checked on the board.
+- After a physical unplug/replug the node comes back with default termios (cooked, `onlcr`, echo).
+  Then an image byte `0x0A` would be sent as `0x0D 0x0A`. The upstream daemon runs `stty` only once at
+  start, so our own daemon must re-apply it whenever the node changes.
 
 ## 7. Display library
 

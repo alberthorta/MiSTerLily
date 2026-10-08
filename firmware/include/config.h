@@ -41,7 +41,8 @@ constexpr int kBacklightPwmChannel = 7;
 constexpr int kScreenWidth = 320;
 constexpr int kScreenHeight = 170;
 
-// LovyanGFX rotation for landscape. 2 is the same landscape turned 180 degrees (CMDROT,1).
+// LovyanGFX rotation for landscape. 0 reads correctly with the USB-C socket on the right
+// (checked on the board). 2 is the same landscape turned 180 degrees (CMDROT,1).
 constexpr uint8_t kRotationNormal = 0;
 constexpr uint8_t kRotationFlipped = 2;
 

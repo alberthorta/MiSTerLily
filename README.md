@@ -4,7 +4,7 @@ A colour status display for a MiSTer FPGA, built on a LILYGO T-Display-S3 (1.9" 
 It shows the current core (logo and name), like [MiSTer_tty2oled](https://github.com/venice1200/MiSTer_tty2oled),
 and talks the same serial protocol over native USB CDC.
 
-Status: **Phase 1** (display bring-up). See `docs/research.md` for the protocol and hardware findings.
+Status: **Phase 2** (display bring-up, USB CDC link, protocol parser). See `docs/research.md` for the protocol and hardware findings.
 
 ## Hardware
 
@@ -25,3 +25,32 @@ pio run -t upload             # build and flash (auto-detects the port)
 The USB port never carries debug output, because the MiSTer scripts read replies from it.
 
 If upload fails: hold **BOOT**, press and release **RST**, release **BOOT**, then upload again.
+
+## USB connection
+
+The board uses the ESP32-S3 built-in USB Serial/JTAG controller (USB ID `303a:1001`,
+"USB JTAG/serial debug unit"). No driver is needed.
+
+- macOS: `/dev/cu.usbmodem*`
+- Linux / MiSTer: `/dev/ttyACM*` (the MiSTer kernel has `CONFIG_USB_ACM=y`)
+
+The baud rate is ignored. Flashing and resetting work over the same port without buttons.
+
+## Testing on a Mac
+
+```sh
+cd firmware && pio test -e native        # protocol unit tests, no board needed
+python3 tools/usb_test.py /dev/cu.usbmodemXXXX   # USB checks against the board
+```
+
+`tools/` needs only the Python standard library (no pyserial), so it also runs on the MiSTer.
+
+Our own commands use the `MDS` prefix, which no tty2oled command uses:
+
+| Command | Reply |
+|---|---|
+| `MDSPING` | `MDSPONG` |
+| `MDSINFO` | `MDSINFO;fw=...;psram=...;uptime_ms=...;...` (one line) |
+| `CMDHWINF` (tty2oled) | `HWTDISPS3;MDS-<version>;` |
+
+Like tty2oled, every received line is answered with `ttyack;` (`CMDSTTYACK,0` turns it off).
