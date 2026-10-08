@@ -9,8 +9,9 @@
 // - A line starting with "CMDCOR" or "CMDAPD" is followed by raw picture bytes with no length
 //   header: 2048 bytes (XBM) or 8192 bytes (GSC). The picture ends at 8192 bytes or after
 //   500 ms without a new byte.
-// - MiSTerLily extension: a line "MDSIMG,<bytes>,..." is followed by exactly <bytes> raw bytes
-//   (a PNG or JPEG file). Unlike CMDCOR the length is announced, so nothing is guessed.
+// - MiSTerLily extension: a line "MDSIMG,<bytes>,..." or "MDSLOGO,<bytes>,..." is followed by
+//   exactly <bytes> raw bytes (a PNG or JPEG file). Unlike CMDCOR the length is announced, so
+//   nothing is guessed.
 
 #include <stddef.h>
 #include <stdint.h>
@@ -56,7 +57,7 @@ enum class AssetResult : uint8_t {
 };
 
 struct AssetFrame {
-  const char* commandLine;  // "MDSIMG,<bytes>,<crc32>,<format>,<core>"
+  const char* commandLine;  // "MDSIMG,<bytes>,<crc32>,<format>,<core>" or "MDSLOGO,<bytes>,<crc32>,<format>"
   AssetResult result;
   const uint8_t* data;  // valid only during the callback
   size_t length;        // bytes received

@@ -47,6 +47,7 @@ enum class CommandId : uint8_t {
   MdsPing,  // MDSPING -> "MDSPONG"
   MdsInfo,  // MDSINFO -> one info line
   MdsCore,  // MDSCORE,<core name> -> show the core name (no picture transfer)
+  MdsLogo,  // MDSLOGO -> stored start-up logo: "MDSLOGO;crc=<hex>;bytes=<n>;format=<png|jpg>" or "MDSLOGO;none"
   MdsNet,   // MDSNET,<ip> -> the MiSTer's address, shown on the menu screen ("" = none)
   MdsCfg,   // MDSCFG -> settings; MDSCFG,idle,<minutes>; MDSCFG,reset
   MdsHang,  // MDSHANG (test builds only): stop feeding the watchdog

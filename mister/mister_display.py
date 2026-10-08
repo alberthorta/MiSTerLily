@@ -18,7 +18,9 @@ Usage (normally started by S60misterlily):
   python3 mister_display.py [--config FILE] [--device DEV] [--corename FILE] [-v]
 """
 import argparse
+import binascii
 import os
+import re
 import signal
 import socket
 import subprocess
@@ -172,6 +174,7 @@ class Display:
         self.send_time()
         self.ip = None
         self.next_ip_check = 0.0
+        self.sync_logo()
         self.last_pong = time.monotonic()
         self.next_ping = 0.0
         self.uptime = None
@@ -198,6 +201,34 @@ class Display:
 
     def still_there(self):
         return self.port is not None and os.path.exists(self.path)
+
+    def sync_logo(self):
+        """Stores <ART_DIR>/STARTUP.png|jpg as the display's start-up picture when it differs from
+        what the display has. The display keeps it in flash, so it is written only on changes."""
+        path = None
+        for ext in ("png", "jpg"):
+            p = os.path.join(self.cfg["ART_DIR"], "STARTUP." + ext)
+            if os.path.exists(p):
+                path = p
+                break
+        if not path:
+            return
+        with open(path, "rb") as f:
+            data = f.read()
+        crc = binascii.crc32(data) & 0xFFFFFFFF
+        self.port.write("MDSLOGO\n")
+        reply = self.port.read_until(b"MDSLOGO;", 2.0)
+        reply = (reply or b"") + (self.port.read_until(b"\n", 1.0) or b"")
+        m = re.search(rb"MDSLOGO;crc=([0-9a-f]{8})", reply)
+        if m and int(m.group(1), 16) == crc:
+            debug("start-up picture already on the display")
+            return
+        if not m and b"MDSLOGO;none" not in reply:
+            log("display does not answer MDSLOGO (old firmware?), start-up picture not sent")
+            return
+        fmt = "jpg" if path.endswith(".jpg") else "png"
+        self.port.write("MDSLOGO,{},{:08x},{}\n".format(len(data), crc, fmt).encode() + data)
+        log("start-up picture {} sent ({} bytes)".format(os.path.basename(path), len(data)))
 
     def send_time(self):
         # Local wall time as epoch seconds, the tty2oled convention (CMDSETTIME).

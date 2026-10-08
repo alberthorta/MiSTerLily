@@ -28,8 +28,8 @@ constexpr const char* kWaitingText = "Waiting for MiSTer";
 
 }  // namespace
 
-App::App(DisplayManager& display, SerialTransport& transport, Settings& settings)
-    : display_(display), transport_(transport), settings_(settings), parser_(*this) {}
+App::App(DisplayManager& display, SerialTransport& transport, Settings& settings, StartupLogo& logo)
+    : display_(display), transport_(transport), settings_(settings), logo_(logo), parser_(*this) {}
 
 void App::begin() {
   assetBuffer_ = static_cast<uint8_t*>(heap_caps_malloc(proto::kMaxAssetBytes, MALLOC_CAP_SPIRAM));
@@ -104,9 +104,14 @@ void App::onImage(const proto::ImageFrame& frame) {
 }
 
 void App::onAsset(const proto::AssetFrame& frame) {
+  const std::string_view header(frame.commandLine);
+  if (header.substr(0, 8) == "MDSLOGO,") {
+    handleLogo(header, frame);
+    ack();
+    return;
+  }
   ++imagesReceived_;
   noteActivity();
-  const std::string_view header(frame.commandLine);
   const char* error = nullptr;
   // The parser already wrote over the buffer, so the previous asset is gone either way.
   assetValid_ = false;
@@ -139,16 +144,7 @@ bool App::decodeAsset(std::string_view header, const proto::AssetFrame& frame, c
     *error = "header";
     return false;
   }
-  uint32_t crc = 0;
-  for (char c : f[1]) {
-    int v = (c >= '0' && c <= '9') ? c - '0' : (c >= 'a' && c <= 'f') ? c - 'a' + 10 : (c >= 'A' && c <= 'F') ? c - 'A' + 10 : -1;
-    if (v < 0) {
-      *error = "header";
-      return false;
-    }
-    crc = (crc << 4) | static_cast<uint32_t>(v);
-  }
-  if (proto::crc32(frame.data, frame.length) != crc) {
+  if (!checkCrc(f[1], frame.data, frame.length)) {
     *error = "crc";
     return false;
   }
@@ -170,6 +166,73 @@ bool App::decodeAsset(std::string_view header, const proto::AssetFrame& frame, c
   assetIsPng_ = png;
   assetLength_ = frame.length;
   return true;
+}
+
+bool App::checkCrc(std::string_view hex, const uint8_t* data, size_t length) {
+  if (hex.size() != 8) return false;
+  uint32_t crc = 0;
+  for (char c : hex) {
+    const int v = (c >= '0' && c <= '9')   ? c - '0'
+                  : (c >= 'a' && c <= 'f') ? c - 'a' + 10
+                  : (c >= 'A' && c <= 'F') ? c - 'A' + 10
+                                           : -1;
+    if (v < 0) return false;
+    crc = (crc << 4) | static_cast<uint32_t>(v);
+  }
+  return proto::crc32(data, length) == crc;
+}
+
+void App::handleLogo(std::string_view header, const proto::AssetFrame& frame) {
+  // MDSLOGO,<bytes>,<crc32 hex>,<png|jpg>
+  std::string_view f[3];
+  const char* error = nullptr;
+  bool png = true;
+  if (frame.result == proto::AssetResult::TooLarge || frame.length > StartupLogo::kMaxBytes) {
+    error = "size";
+  } else if (frame.result != proto::AssetResult::Ok) {
+    error = frame.result == proto::AssetResult::Incomplete ? "incomplete" : "header";
+  } else if (proto::splitFields(header.substr(8), f, 3) != 3 || (f[2] != "png" && f[2] != "jpg")) {
+    error = "header";
+  } else if (!checkCrc(f[1], frame.data, frame.length)) {
+    error = "crc";
+  } else {
+    png = f[2] == "png";
+    // Cheap sanity check of the file signature; a picture that still fails to decode at boot
+    // falls back to the text start screen.
+    static const uint8_t kPngSig[4] = {0x89, 'P', 'N', 'G'};
+    const bool sigOk = png ? (frame.length > 8 && memcmp(frame.data, kPngSig, 4) == 0)
+                           : (frame.length > 2 && frame.data[0] == 0xFF && frame.data[1] == 0xD8);
+    if (!sigOk) {
+      error = "format";
+    } else if (!logo_.store(frame.data, frame.length, png)) {
+      error = "storage";
+    }
+  }
+  char reply[48];
+  snprintf(reply, sizeof(reply), "MDSLOGO;%s%s\n", error ? "err=" : "ok", error ? error : "");
+  transport_.write(reply);
+  if (!error && (screen_ == Screen::Splash || screen_ == Screen::Waiting)) {
+    drawSplash(screen_ == Screen::Waiting ? kWaitingText : nullptr);
+  }
+}
+
+void App::sendLogoStatus() {
+  char reply[80];
+  if (logo_.present()) {
+    snprintf(reply, sizeof(reply), "MDSLOGO;crc=%08lx;bytes=%u;format=%s\n", (unsigned long)logo_.crc(),
+             (unsigned)logo_.size(), logo_.isPng() ? "png" : "jpg");
+  } else {
+    snprintf(reply, sizeof(reply), "MDSLOGO;none\n");
+  }
+  transport_.write(reply);
+}
+
+void App::drawSplash(const char* hint) {
+  SplashScreen::Logo logo;
+  logo.data = logo_.data();
+  logo.size = logo_.size();
+  logo.png = logo_.isPng();
+  SplashScreen::draw(display_, "v" MDS_FW_VERSION, hint, logo_.present() ? &logo : nullptr);
 }
 
 void App::onDiscard(proto::DiscardReason reason, size_t length) {
@@ -257,6 +320,9 @@ void App::handle(const proto::Command& cmd, std::string_view line) {
     case CommandId::MdsCfg:
       handleConfig(cmd.args);
       break;
+    case CommandId::MdsLogo:
+      sendLogoStatus();
+      break;
     case CommandId::MdsNet: {
       const size_t n = cmd.args.size() < sizeof(ip_) - 1 ? cmd.args.size() : sizeof(ip_) - 1;
       memcpy(ip_, cmd.args.data(), n);
@@ -331,7 +397,7 @@ void App::showCore(bool fade) {
 
 void App::showSplash() {
   screen_ = Screen::Splash;
-  SplashScreen::draw(display_, "v" MDS_FW_VERSION);
+  drawSplash(nullptr);
 }
 
 void App::showMenu(bool dimmed) {
@@ -388,10 +454,10 @@ void App::handlePresence(presence::Event event) {
     case presence::Event::HostLost:
       LOGF("host lost");
       screen_ = Screen::Waiting;
-      SplashScreen::draw(display_, "v" MDS_FW_VERSION, kWaitingText);
+      drawSplash(kWaitingText);
       break;
     case presence::Event::SplashWaiting:
-      if (screen_ == Screen::Splash) SplashScreen::draw(display_, "v" MDS_FW_VERSION, kWaitingText);
+      if (screen_ == Screen::Splash) drawSplash(kWaitingText);
       break;
     case presence::Event::IdleSleep:
       LOGF("idle sleep");
@@ -415,6 +481,7 @@ void App::handleConfig(std::string_view args) {
   // MDSCFG,idle,<minutes> -> idle sleep after <minutes> without a core change (0 = never)
   // MDSCFG,fade,<0|1>     -> backlight dip on core changes
   // MDSCFG,idleclock,<0|1> -> when idle, a dim clock instead of backlight off
+  // MDSCFG,logo,0         -> delete the stored start-up picture
   // MDSCFG,reset          -> defaults
   std::string_view f[2];
   const size_t n = args.empty() ? 0 : proto::splitFields(args, f, 2);
@@ -426,6 +493,11 @@ void App::handleConfig(std::string_view args) {
     settings_.setFade(v == 1);
   } else if (n == 2 && f[0] == "idleclock" && proto::parseInt(f[1], v) && (v == 0 || v == 1)) {
     settings_.setIdleClock(v == 1);
+  } else if (n == 2 && f[0] == "logo" && f[1] == "0") {
+    logo_.clear();
+    if (screen_ == Screen::Splash || screen_ == Screen::Waiting) {
+      drawSplash(screen_ == Screen::Waiting ? kWaitingText : nullptr);
+    }
   } else if (n == 1 && f[0] == "reset") {
     settings_.resetToDefaults();
     presence_.setIdleTimeout(0);

@@ -129,7 +129,7 @@ void ProtocolParser::completeLine() {
     startImage();
     return;
   }
-  if (startsWith(line_, n, "MDSIMG,")) {
+  if (startsWith(line_, n, "MDSIMG,") || startsWith(line_, n, "MDSLOGO,")) {
     memcpy(imageCommand_, line_, n + 1);
     startAsset();
     return;
@@ -158,9 +158,10 @@ void ProtocolParser::finishImage(ImageResult result) {
 }
 
 void ProtocolParser::startAsset() {
-  // "MDSIMG,<bytes>,...": only the length matters here; the rest is for the listener.
+  // "<keyword>,<bytes>,...": only the length matters here; the rest is for the listener.
   std::string_view fields[3];
-  const std::string_view args = std::string_view(imageCommand_).substr(7);
+  const std::string_view line(imageCommand_);
+  const std::string_view args = line.substr(line.find(',') + 1);
   int32_t bytes = 0;
   // A length beyond the protocol limit is treated as a broken header rather than skipped: the
   // parser would otherwise swallow everything that follows.

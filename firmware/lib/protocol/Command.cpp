@@ -33,6 +33,7 @@ constexpr Keyword kExact[] = {
     {"MDSPING", CommandId::MdsPing},
     {"MDSINFO", CommandId::MdsInfo},
     {"MDSSHOT", CommandId::MdsShot},
+    {"MDSLOGO", CommandId::MdsLogo},
     {"MDSCFG", CommandId::MdsCfg},
     {"MDSHANG", CommandId::MdsHang},
 };

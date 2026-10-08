@@ -147,6 +147,22 @@ void test_tty2oled_still_works_after_asset() {
   TEST_ASSERT_FALSE(parser->receivingBinary());
 }
 
+void test_logo_frame_uses_the_same_framing() {
+  const std::vector<uint8_t> data = payload(3000);
+  std::string head = "MDSLOGO," + std::to_string(data.size()) + ",00000000,png\n";
+  std::vector<uint8_t> stream(head.begin(), head.end());
+  stream.insert(stream.end(), data.begin(), data.end());
+  const char* next = "MDSLOGO\n";  // the status query is a normal line
+  stream.insert(stream.end(), next, next + strlen(next));
+  feed(stream, 64);
+  TEST_ASSERT_EQUAL(1, rec.assets.size());
+  TEST_ASSERT_EQUAL(AssetResult::Ok, rec.assets[0].result);
+  TEST_ASSERT_EQUAL_STRING("MDSLOGO,3000,00000000,png", rec.assets[0].command.c_str());
+  TEST_ASSERT_EQUAL_MEMORY(data.data(), rec.assets[0].data.data(), data.size());
+  TEST_ASSERT_EQUAL(1, rec.lines.size());
+  TEST_ASSERT_EQUAL_STRING("MDSLOGO", rec.lines[0].c_str());
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_crc32_matches_zlib);
@@ -156,5 +172,6 @@ int main(int, char**) {
   RUN_TEST(test_bad_headers);
   RUN_TEST(test_no_buffer_means_too_large);
   RUN_TEST(test_tty2oled_still_works_after_asset);
+  RUN_TEST(test_logo_frame_uses_the_same_framing);
   return UNITY_END();
 }

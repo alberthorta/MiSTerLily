@@ -96,6 +96,9 @@ MDSIMG,<bytes>,<crc32>,<png|jpg>,<core>\n
 | `MDSCFG,fade,<0\|1>` | Short backlight dip on core changes (default 1). `CMDCOR,<core>,0` skips it for one change |
 | `MDSCFG,idleclock,<0\|1>` | When idle: a dim clock instead of a dark screen (default 0; needs the time) |
 | `MDSCFG,reset` | Default settings (brightness 255, no rotation, no idle sleep, fade on, no idle clock) |
+| `MDSLOGO` | `MDSLOGO;crc=<hex>;bytes=<n>;format=<png\|jpg>\n` or `MDSLOGO;none\n`: the stored start-up picture |
+| `MDSLOGO,<bytes>,<crc32>,<png\|jpg>` + file | Store the start-up picture in flash (same framing as `MDSIMG`, max 256 KB). Reply `MDSLOGO;ok\n` or `MDSLOGO;err=<header\|size\|incomplete\|crc\|format\|storage>\n` |
+| `MDSCFG,logo,0` | Delete the stored start-up picture (back to the text start screen) |
 | `MDSNET,<ip>` | The MiSTer's IP address, shown on the menu clock screen (empty = none) |
 | `MDSINFO` | `MDSINFO;fw=..;board=T-Display-S3;psram=..;fb=psram;uptime_ms=..;reset=..;lines=..;images=..;discards=..;txdrop=..;txstale=..;lastimg=<result>:<bytes>;core=..\n` |
 | `MDSCORE,<core>` | Show the core name (no picture transfer) |
@@ -117,7 +120,10 @@ MDSIMG,<bytes>,<crc32>,<png|jpg>,<core>\n
   the next core change (as with tty2oled's own hardware).
 - **Idle sleep**: off by default (an LCD has no burn-in). `CMDDOFF`/`CMDDON` stay independent: a core
   change wakes an idle sleep, but not a `CMDDOFF`.
-- **Start screen**: after 10 s without any data it adds "Waiting for MiSTer".
+- **Start screen**: the stored start-up picture (centered in the top 320×130 area; text "MiSTer /
+  T-Display-S3" if there is none or it cannot be decoded), the firmware version bottom right, and
+  after 10 s without any data "Waiting for MiSTer" below the picture. The picture lives in LittleFS
+  on the `spiffs` data partition, which firmware uploads do not touch.
 - **Menu screen**: a core named `MENU` without a picture shows time, date and the IP from `MDSNET`
   (once the time is known), redrawn every minute.
 - **Fade**: the backlight goes down (120 ms), the new frame is pushed, and it comes back (180 ms).

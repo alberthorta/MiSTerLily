@@ -3,10 +3,10 @@
 
 #include "app/App.h"
 #include "app/Settings.h"
+#include "app/StartupLogo.h"
 #include "config.h"
 #include "transport/SerialTransport.h"
 #include "ui/DisplayManager.h"
-#include "ui/SplashScreen.h"
 #include "util/Log.h"
 
 namespace {
@@ -17,7 +17,8 @@ constexpr uint32_t kWatchdogSeconds = 8;
 DisplayManager display;
 SerialTransport transport;
 Settings settings;
-App app(display, transport, settings);
+StartupLogo logo;
+App app(display, transport, settings, logo);
 
 }  // namespace
 
@@ -27,10 +28,11 @@ void setup() {
 
   transport.begin();
   settings.load();
+  logo.begin();
 
   // Without a panel there is nothing to show, but the serial side keeps working.
   if (display.begin(settings.rotated() ? cfg::kRotationFlipped : cfg::kRotationNormal)) {
-    SplashScreen::draw(display, "v" MDS_FW_VERSION);
+    app.showStartScreen();
     display.setBrightness(Settings::backlightFor(settings.contrast()));
   }
   app.begin();

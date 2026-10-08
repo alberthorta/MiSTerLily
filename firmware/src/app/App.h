@@ -9,6 +9,7 @@
 #include "ProtocolParser.h"
 #include "WallClock.h"
 #include "app/Settings.h"
+#include "app/StartupLogo.h"
 #include "transport/SerialTransport.h"
 #include "ui/DisplayManager.h"
 
@@ -16,10 +17,11 @@
 // keeps the state (current core, its picture, display settings) and decides what to draw.
 class App : public proto::ParserListener {
  public:
-  App(DisplayManager& display, SerialTransport& transport, Settings& settings);
+  App(DisplayManager& display, SerialTransport& transport, Settings& settings, StartupLogo& logo);
 
   void begin();
   void loop();
+  void showStartScreen() { showSplash(); }
 
   // ParserListener
   void onLine(const char* line, size_t length) override;
@@ -45,6 +47,10 @@ class App : public proto::ParserListener {
   // fade: the core changed (dip the backlight if enabled); false for redraws of the same core.
   void showCore(bool fade = false);
   void showMenu(bool dimmed);
+  void drawSplash(const char* hint);
+  void handleLogo(std::string_view header, const proto::AssetFrame& frame);
+  void sendLogoStatus();
+  static bool checkCrc(std::string_view hex, const uint8_t* data, size_t length);
   void setTime(std::string_view args);
   void showSplash();
   void setContrast(std::string_view args);
@@ -60,6 +66,7 @@ class App : public proto::ParserListener {
   DisplayManager& display_;
   SerialTransport& transport_;
   Settings& settings_;
+  StartupLogo& logo_;
   proto::ProtocolParser parser_;
   presence::Presence presence_;
   Screen screen_ = Screen::Splash;

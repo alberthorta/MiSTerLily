@@ -4,13 +4,18 @@
 
 namespace SplashScreen {
 
-void draw(DisplayManager& display, const char* version, const char* hint) {
-  auto& g = display.canvas();
-  const int w = display.width();
-  const int h = display.height();
+namespace {
 
-  g.fillScreen(theme::kBackground);
+constexpr int kHintY = 146;
 
+bool drawLogo(lgfx::LovyanGFX& g, int w, const Logo& logo) {
+  if (!logo.data || logo.size == 0) return false;
+  // The datum centres the picture in the (0, 0, w, kLogoAreaHeight) box; larger ones are cropped.
+  return logo.png ? g.drawPng(logo.data, logo.size, 0, 0, w, kLogoAreaHeight, 0, 0, 1.0f, 0.0f, lgfx::middle_center)
+                  : g.drawJpg(logo.data, logo.size, 0, 0, w, kLogoAreaHeight, 0, 0, 1.0f, 0.0f, lgfx::middle_center);
+}
+
+void drawTextTitle(lgfx::LovyanGFX& g, int w) {
   g.setTextDatum(lgfx::middle_center);
   g.setTextColor(theme::kText);
   g.setFont(&fonts::FreeSansBold24pt7b);
@@ -21,6 +26,21 @@ void draw(DisplayManager& display, const char* version, const char* hint) {
   g.setTextColor(theme::kTextDim);
   g.setFont(&fonts::FreeSans12pt7b);
   g.drawString("T-Display-S3", w / 2, 118);
+}
+
+}  // namespace
+
+void draw(DisplayManager& display, const char* version, const char* hint, const Logo* logo) {
+  auto& g = display.canvas();
+  const int w = display.width();
+  const int h = display.height();
+
+  g.fillScreen(theme::kBackground);
+  g.setTextSize(1);
+  if (!logo || !drawLogo(g, w, *logo)) {
+    g.fillScreen(theme::kBackground);  // a failed decode may have drawn part of the picture
+    drawTextTitle(g, w);
+  }
 
   g.setTextDatum(lgfx::bottom_right);
   g.setTextColor(theme::kTextFaint);
@@ -30,7 +50,7 @@ void draw(DisplayManager& display, const char* version, const char* hint) {
   if (hint) {
     g.setTextDatum(lgfx::middle_center);
     g.setTextColor(theme::kAccent);
-    g.drawString(hint, w / 2, 146);
+    g.drawString(hint, w / 2, kHintY);
   }
 
   display.present();
