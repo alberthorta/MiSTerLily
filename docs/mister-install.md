@@ -70,8 +70,8 @@ like tty2oled, shorter prefixes also match (`art/Genesis.png` is used for a core
 New files are used at the next core change; no restart needed.
 
 `art/STARTUP.png` (or `.jpg`) is special: it is the display's own start-up picture, shown before the
-MiSTer is ready. Make it 320×130 (it is centered in that area; the line below holds the version and
-"Waiting for MiSTer"). The daemon stores it on the display when it connects and the file has changed.
+MiSTer is ready. Make it 320×130 (it is centered in that area; the line below holds "Waiting for
+MiSTer", and the version is drawn small in the top-right corner). The daemon stores it on the display when it connects and the file has changed.
 
 ## 5. Check it
 

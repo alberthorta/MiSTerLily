@@ -6,7 +6,10 @@ namespace SplashScreen {
 
 namespace {
 
-constexpr int kHintY = 146;
+// The hint is Font2 at 2x (32 px). It fills most of the line below the logo, so the version moved
+// to the top-right corner, which the logo area leaves free.
+constexpr int kHintY = 149;
+constexpr float kHintScale = 2.0f;
 
 bool drawLogo(lgfx::LovyanGFX& g, int w, const Logo& logo) {
   if (!logo.data || logo.size == 0) return false;
@@ -33,7 +36,6 @@ void drawTextTitle(lgfx::LovyanGFX& g, int w) {
 void draw(DisplayManager& display, const char* version, const char* hint, const Logo* logo) {
   auto& g = display.canvas();
   const int w = display.width();
-  const int h = display.height();
 
   g.fillScreen(theme::kBackground);
   g.setTextSize(1);
@@ -42,15 +44,17 @@ void draw(DisplayManager& display, const char* version, const char* hint, const 
     drawTextTitle(g, w);
   }
 
-  g.setTextDatum(lgfx::bottom_right);
+  g.setTextDatum(lgfx::top_right);
   g.setTextColor(theme::kTextFaint);
   g.setFont(&fonts::Font2);
-  g.drawString(version, w - 6, h - 4);
+  g.drawString(version, w - 4, 2);
 
   if (hint) {
     g.setTextDatum(lgfx::middle_center);
     g.setTextColor(theme::kAccent);
+    g.setTextSize(kHintScale);
     g.drawString(hint, w / 2, kHintY);
+    g.setTextSize(1);
   }
 
   display.present();
