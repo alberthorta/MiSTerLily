@@ -2,13 +2,15 @@
 
 #include <stdint.h>
 
+#include <string_view>
+
 #include "Command.h"
 #include "ProtocolParser.h"
 #include "transport/SerialTransport.h"
 #include "ui/DisplayManager.h"
 
 // Glue between the serial protocol and the screens. The parser only produces events; this class
-// decides what each one means and what to draw.
+// keeps the state (current core, its picture, display settings) and decides what to draw.
 class App : public proto::ParserListener {
  public:
   App(DisplayManager& display, SerialTransport& transport);
@@ -22,7 +24,15 @@ class App : public proto::ParserListener {
   void onDiscard(proto::DiscardReason reason, size_t length) override;
 
  private:
-  void handle(const proto::Command& cmd);
+  static constexpr size_t kMaxCoreName = 63;
+
+  void handle(const proto::Command& cmd, std::string_view line);
+  void setCore(std::string_view name);
+  void showCore();
+  void showSplash();
+  void setContrast(std::string_view args);
+  void setRotation(std::string_view args);
+  void clearWithFill(std::string_view args);
   void sendHardwareInfo();
   void sendInfo();
   void ack();
@@ -30,6 +40,12 @@ class App : public proto::ParserListener {
   DisplayManager& display_;
   SerialTransport& transport_;
   proto::ProtocolParser parser_;
+
+  char coreName_[kMaxCoreName + 1] = {};
+  size_t coreNameLength_ = 0;
+  // The last received picture (CMDCOR/CMDAPD), kept for CMDSPIC. Drawn from phase 4 on.
+  uint8_t picture_[proto::kImageBufferBytes] = {};
+  proto::ImageFormat pictureFormat_ = proto::ImageFormat::None;
 
   bool sendTtyAck_ = true;
   bool restartPending_ = false;

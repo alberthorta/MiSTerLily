@@ -13,10 +13,12 @@ class DisplayManager {
   lgfx::LovyanGFX& canvas();
   void present();
 
+  // Remembered while asleep: wake() restores it.
   void setBrightness(uint8_t level);
   void setRotation(uint8_t rotation);
   void sleep();
   void wake();
+  bool awake() const { return awake_; }
 
   int width() const;
   int height() const;
@@ -26,4 +28,6 @@ class DisplayManager {
   Lgfx lcd_;
   LGFX_Sprite frame_{&lcd_};
   bool framebufferOk_ = false;
+  bool awake_ = true;
+  uint8_t brightness_ = 0;
 };

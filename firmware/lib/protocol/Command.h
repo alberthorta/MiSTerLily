@@ -61,6 +61,15 @@ Command parseCommand(std::string_view line);
 // CMDTXT text can contain ','. Returns the number of fields.
 size_t splitFields(std::string_view args, std::string_view* fields, size_t maxFields);
 
+// "CMDCOR,<core>[,<t>]" / "CMDAPD,<core>": like the sketch, the name ends at the first ',' after
+// the keyword; t is the transition (-1 = random, 0 = none), clamped to -1..kMaxTransition.
+struct CoreCommand {
+  std::string_view core;
+  int32_t transition = -1;
+};
+constexpr int32_t kMaxTransition = 23;
+CoreCommand parseCoreCommand(std::string_view line);
+
 // Strict decimal integer (optional leading '-'), no spaces. False on empty or junk.
 bool parseInt(std::string_view text, int32_t& out);
 

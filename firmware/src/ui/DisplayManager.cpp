@@ -33,19 +33,34 @@ lgfx::LovyanGFX& DisplayManager::canvas() {
 }
 
 void DisplayManager::present() {
-  if (framebufferOk_) frame_.pushSprite(0, 0);
+  // While asleep the frame stays in the buffer; wake() pushes it.
+  if (framebufferOk_ && awake_) frame_.pushSprite(0, 0);
 }
 
-void DisplayManager::setBrightness(uint8_t level) { lcd_.setBrightness(level); }
+void DisplayManager::setBrightness(uint8_t level) {
+  brightness_ = level;
+  if (awake_) lcd_.setBrightness(level);
+}
 
-void DisplayManager::setRotation(uint8_t rotation) { lcd_.setRotation(rotation); }
+void DisplayManager::setRotation(uint8_t rotation) {
+  lcd_.setRotation(rotation);
+  present();
+}
 
 void DisplayManager::sleep() {
+  if (!awake_) return;
+  awake_ = false;
   lcd_.setBrightness(0);
   lcd_.sleep();
 }
 
-void DisplayManager::wake() { lcd_.wakeup(); }
+void DisplayManager::wake() {
+  if (awake_) return;
+  awake_ = true;
+  lcd_.wakeup();
+  present();
+  lcd_.setBrightness(brightness_);
+}
 
 int DisplayManager::width() const { return cfg::kScreenWidth; }
 

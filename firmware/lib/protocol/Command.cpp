@@ -96,6 +96,23 @@ Command parseCommand(std::string_view line) {
   return cmd;
 }
 
+CoreCommand parseCoreCommand(std::string_view line) {
+  CoreCommand out;
+  constexpr size_t kKeywordLength = 6;  // "CMDCOR" / "CMDAPD"
+  if (line.size() <= kKeywordLength) return out;
+  std::string_view rest = line.substr(kKeywordLength);
+  if (rest.front() == ',') rest.remove_prefix(1);
+  const size_t comma = rest.find(',');
+  out.core = rest.substr(0, comma);
+  if (comma != std::string_view::npos) {
+    int32_t t = -1;
+    // The sketch uses toInt(), which turns junk into 0 (no transition).
+    if (!parseInt(rest.substr(comma + 1), t)) t = 0;
+    out.transition = t < -1 ? -1 : (t > kMaxTransition ? kMaxTransition : t);
+  }
+  return out;
+}
+
 size_t splitFields(std::string_view args, std::string_view* fields, size_t maxFields) {
   if (maxFields == 0) return 0;
   size_t count = 0;

@@ -4,7 +4,7 @@ A colour status display for a MiSTer FPGA, built on a LILYGO T-Display-S3 (1.9" 
 It shows the current core (logo and name), like [MiSTer_tty2oled](https://github.com/venice1200/MiSTer_tty2oled),
 and talks the same serial protocol over native USB CDC.
 
-Status: **Phase 2** (display bring-up, USB CDC link, protocol parser). See `docs/research.md` for the protocol and hardware findings.
+Status: **Phase 3** (display, USB CDC link, protocol parser, core name screen). See `docs/research.md` for the protocol and hardware findings.
 
 ## Hardware
 
@@ -54,3 +54,17 @@ Our own commands use the `MDS` prefix, which no tty2oled command uses:
 | `CMDHWINF` (tty2oled) | `HWTDISPS3;MDS-<version>;` |
 
 Like tty2oled, every received line is answered with `ttyack;` (`CMDSTTYACK,0` turns it off).
+
+## Simulating a MiSTer
+
+`tools/fake_mister.py` sends exactly what the tty2oled daemon sends: its startup sequence, then
+`CMDCOR,<core>,-1` + raw picture when a picture exists, else the bare core name.
+
+```sh
+python3 tools/fake_mister.py /dev/cu.usbmodemXXXX PSX                       # name only
+python3 tools/fake_mister.py /dev/cu.usbmodemXXXX --pics <tty2oled Pictures folder> SNES PSX ATARI5200
+python3 tools/fake_mister.py /dev/cu.usbmodemXXXX --loop --interval 4 MENU SNES PSX Saturn
+```
+
+Core names are the values MiSTer writes to `/tmp/CORENAME` (`PSX`, `SNES`, `ATARI5200`, `Minimig`, ...).
+The screen shows a friendly name for common systems (`PSX` → PLAYSTATION) with the core name small below.

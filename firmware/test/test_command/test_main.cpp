@@ -97,6 +97,26 @@ void test_parse_int() {
   TEST_ASSERT_FALSE(parseInt("9999999999", v));
 }
 
+void test_core_command() {
+  CoreCommand c = parseCoreCommand("CMDCOR,SNES,-1");
+  TEST_ASSERT_EQUAL_STRING("SNES", str(c.core).c_str());
+  TEST_ASSERT_EQUAL(-1, c.transition);
+
+  c = parseCoreCommand("CMDCOR,llander,19");
+  TEST_ASSERT_EQUAL_STRING("llander", str(c.core).c_str());
+  TEST_ASSERT_EQUAL(19, c.transition);
+
+  c = parseCoreCommand("CMDCOR,Amstrad PCW");
+  TEST_ASSERT_EQUAL_STRING("Amstrad PCW", str(c.core).c_str());
+  TEST_ASSERT_EQUAL(-1, c.transition);
+
+  TEST_ASSERT_EQUAL(kMaxTransition, parseCoreCommand("CMDCOR,X,99").transition);
+  TEST_ASSERT_EQUAL(-1, parseCoreCommand("CMDCOR,X,-7").transition);
+  TEST_ASSERT_EQUAL(0, parseCoreCommand("CMDCOR,X,abc").transition);  // toInt() semantics
+  TEST_ASSERT_EQUAL_STRING("MDSTEST", str(parseCoreCommand("CMDAPD,MDSTEST").core).c_str());
+  TEST_ASSERT_EQUAL(0, parseCoreCommand("CMDCOR").core.size());
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_core_name);
@@ -106,5 +126,6 @@ int main(int, char**) {
   RUN_TEST(test_prefix_commands_and_args);
   RUN_TEST(test_split_fields_keeps_commas_in_last_field);
   RUN_TEST(test_parse_int);
+  RUN_TEST(test_core_command);
   return UNITY_END();
 }
