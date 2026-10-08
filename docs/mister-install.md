@@ -57,6 +57,13 @@ It:
 3. restarts the tty2oled daemon.
 
 `bash /media/fat/MiSTerLily/uninstall.sh` removes the block (`--purge` also deletes the folder).
+The `TTY2OLED_UPDATE="no"` line from step 1 stays on purpose: keep it while the board is attached.
+
+## Brightness
+
+tty2oled sends its `CONTRAST` setting (default 100, made for OLEDs) as `CMDCON` when the daemon
+starts. The display maps 0..255 to backlight 40..255, so the default gives about half brightness.
+For full brightness add `CONTRAST="255"` to `tty2oled-user.ini` (above the MiSTerLily block).
 
 ## 4. Check it
 

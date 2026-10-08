@@ -54,6 +54,9 @@ printf '# comment\nMDS_SERIAL="AA:BB:CC:DD:EE:FF"\n' > "$WORK/config.ini"
 check "serial pin from config.ini" "$WORK/dev/ttyACM2" \
   "$(SYSFS_ROOT="$WORK/sys" DEV_ROOT="$WORK/dev" MDS_CONFIG="$WORK/config.ini" bash "$FIND" --quiet)"
 
+# The fake device nodes are /dev/null: they never answer CMDHWINF.
+check "--probe skips devices that do not answer" "" "$(run --probe --quiet)"
+
 out="$(run 2>&1 >/dev/null)"
 case "$out" in *"303a:1001"*"display: "*) r=ok ;; *) r="$out" ;; esac
 check "verbose listing on stderr" "ok" "$r"

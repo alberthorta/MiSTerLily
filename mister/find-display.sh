@@ -52,9 +52,11 @@ attr() { [ -r "$1/$2" ] && head -n 1 "$1/$2" 2>/dev/null; }
 probe_device() {
   local dev="$1" out reader i ok=1
   out="$(mktemp 2>/dev/null || echo "/tmp/find-display.$$")"
-  exec 3<>"$dev" || return 1
+  # stty before opening: on Linux the settings persist between opens, so our descriptor is raw
+  # from the start and cannot echo queued device output back to it (it would arrive as a core name).
   stty -F "$dev" 115200 cs8 raw -parenb -cstopb -hupcl -echo 2>/dev/null ||
     stty -f "$dev" 115200 cs8 raw -parenb -cstopb -hupcl -echo 2>/dev/null
+  exec 3<>"$dev" || return 1
   cat <&3 >"$out" 2>/dev/null &
   reader=$!
   # CMDNULL first: the device only releases queued old replies when it writes again.

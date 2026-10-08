@@ -90,7 +90,8 @@ tty2oled with its updater, copy `mister/` to `/media/fat/MiSTerLily` and run `in
 | Core change with picture (`CMDCOR` + XBM/GSC) | works; transitions are ignored |
 | Core change without picture (bare name) | works |
 | Startup commands (`QWERTZ`, `CMDCON`, `CMDSETTIME`, `CMDSAVER`) | accepted; `CMDCON` sets brightness |
-| `CMDROT` (`ROTATE="yes"`), `CMDDON`/`CMDDOFF`, `CMDCLS`, `CMDTXT`, `CMDGEO`, `CMDSPIC`, `CMDAPD`, `CMDTEST`, `CMDHWINF`, `CMDRESET` | work |
+| `CMDCLS`, `CMDTXT`, `CMDGEO`, `CMDSPIC`, `CMDAPD`, `CMDTEST`, `CMDHWINF`, `CMDRESET` | work (checked on the board) |
+| `CMDROT` (`ROTATE="yes"`), `CMDDON`/`CMDDOFF`, `CMDCON` | implemented, not yet checked on the board |
 | Screensaver, clock, transitions, d.ti board commands | not implemented (accepted, ignored) |
 | tty2oled firmware updater | must be off (`TTY2OLED_UPDATE="no"`); our board answers `HWTDISPS3` so the updater does not recognise it |
 

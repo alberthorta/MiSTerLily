@@ -47,8 +47,9 @@ if [ "$SRC" != "$DEST" ]; then
 fi
 chmod +x "$DEST/find-display.sh" "$DEST/uninstall.sh" 2>/dev/null || true  # FAT may refuse; bash runs them anyway
 
-# 2. Identify the display. The daemon is stopped first so it does not write while we ask.
-[ -x "$T2O/S60tty2oled" ] && "$T2O/S60tty2oled" stop >/dev/null 2>&1
+# 2. Identify the display. With a restart coming, stop the daemon so it does not write while we ask
+# (an idle daemon only writes when /tmp/CORENAME changes, so --no-restart leaves it running).
+[ "$restart" = yes ] && [ -x "$T2O/S60tty2oled" ] && "$T2O/S60tty2oled" stop >/dev/null 2>&1
 echo "Looking for the display..."
 dev="$(MDS_CONFIG=/dev/null bash "$DEST/find-display.sh" --probe)"
 if [ -n "$dev" ]; then
