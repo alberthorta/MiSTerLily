@@ -81,4 +81,17 @@ void drawWithArtwork(DisplayManager& display, std::string_view coreName, proto::
   display.present();
 }
 
+bool drawAsset(DisplayManager& display, AssetFormat format, const uint8_t* data, size_t length) {
+  auto& g = display.canvas();
+  const int w = display.width();
+  const int h = display.height();
+  g.fillScreen(theme::kBackground);
+  // The datum places the picture inside the (0, 0, w, h) box: middle_center centers it.
+  const bool ok = format == AssetFormat::Png
+                      ? g.drawPng(data, length, 0, 0, w, h, 0, 0, 1.0f, 0.0f, lgfx::middle_center)
+                      : g.drawJpg(data, length, 0, 0, w, h, 0, 0, 1.0f, 0.0f, lgfx::middle_center);
+  if (ok) display.present();
+  return ok;
+}
+
 }  // namespace CoreScreen

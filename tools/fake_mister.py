@@ -11,6 +11,9 @@ Picture lookup follows senddata(): <pics>/pics_pri/<core>.gsc|.xbm, then the fol
 GSC_US XBM_US GSC XBM XBM_TEXT under <pics>, trying the full name and then shorter prefixes.
 Picture files are decoded like `tail -n +4 file | xxd -r -p`.
 
+With --art DIR, a colour picture <DIR>/<core>.png or .jpg (same prefix rule) is tried first and
+sent with the MiSTerLily extension: MDSIMG,<bytes>,<crc32>,<png|jpg>,<core> + the file.
+
 Examples:
   python3 tools/fake_mister.py /dev/cu.usbmodem1101 PSX
   python3 tools/fake_mister.py /dev/cu.usbmodem1101 --pics ~/tty2oled_pictures/Pictures SNES PSX ATARI5200 --interval 3
@@ -23,6 +26,7 @@ import re
 import subprocess
 import sys
 import time
+import zlib
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -63,6 +67,27 @@ def find_picture(pics, core, use_us=False, use_gsc=True, use_text=False):
     return None
 
 
+def find_art(art, core):
+    """Native colour picture for `core` in `art`: full name first, then shorter prefixes."""
+    if not art:
+        return None
+    for c in range(len(core), 0, -1):
+        for ext in ("png", "jpg"):
+            p = os.path.join(art, "{}.{}".format(core[:c], ext))
+            if os.path.exists(p):
+                return p
+    return None
+
+
+def asset_frame(core, path):
+    """MDSIMG header line + file bytes."""
+    with open(path, "rb") as f:
+        data = f.read()
+    fmt = "jpg" if path.lower().endswith((".jpg", ".jpeg")) else "png"
+    head = "MDSIMG,{},{:08x},{},{}\n".format(len(data), zlib.crc32(data) & 0xFFFFFFFF, fmt, core)
+    return head.encode(), data
+
+
 def local_epoch():
     # tty2oled.sh: date '-d now <utc offset> hour' +%s, i.e. local wall time as epoch seconds.
     return int(time.time() + time.localtime().tm_gmtoff)
@@ -96,6 +121,11 @@ def startup(s, contrast):
 
 
 def send_core(s, core, pics, transition, opts):
+    art = find_art(opts.art, core)
+    if art:
+        head, data = asset_frame(core, art)
+        s.raw(head + data, "MDSIMG " + os.path.basename(art))
+        return
     pic = find_picture(pics, core, opts.us, not opts.no_gsc, opts.text)
     if pic:
         data = decode_picture(pic)
@@ -132,6 +162,7 @@ def main():
     ap.add_argument("device", nargs="?", help="serial device, e.g. /dev/cu.usbmodem1101 or /dev/ttyACM0")
     ap.add_argument("cores", nargs="*", help="core names as MiSTer writes them to /tmp/CORENAME")
     ap.add_argument("--pics", help="tty2oled picture folder (contains GSC/, XBM/, ...)")
+    ap.add_argument("--art", help="colour pictures folder (<core>.png / <core>.jpg), tried first")
     ap.add_argument("--contrast", type=int, default=100, help="CMDCON value (default 100, as tty2oled)")
     ap.add_argument("--transition", type=int, default=-1, help="CMDCOR transition (default -1)")
     ap.add_argument("--interval", type=float, default=3.0, help="seconds between cores")

@@ -64,6 +64,27 @@ The host should set the port raw (`stty ... raw -echo -hupcl`), like tty2oled do
 The version starts with a letter, so the installer sees it as newer than any tty2oled build and does
 not offer an update.
 
+## Colour pictures: `MDSIMG`
+
+```
+MDSIMG,<bytes>,<crc32>,<png|jpg>,<core>\n
+<bytes> raw bytes of the file
+```
+
+- `<bytes>`: file length, 1..524288 (512 KB, the PSRAM buffer). A larger or unreadable value is a
+  broken header: nothing is skipped, and the following bytes are dropped as non-printable lines.
+- `<crc32>`: 8 hex digits, CRC-32 as computed by zlib / `python3 -c "import zlib; ..."`.
+- `<png|jpg>`: PNG (any bit depth, palette, alpha, interlaced; alpha is blended on black) or
+  **baseline** JPEG (progressive JPEG is not supported by the decoder).
+- `<core>`: the core name, shown as text if the picture cannot be used.
+- The picture is drawn centered on black at 1:1. `tools/convert_asset.py` makes 320×170 files.
+- Unlike `CMDCOR`, the length is announced: the frame ends exactly after `<bytes>`, and a command may
+  follow immediately. If the sender stops for 1 s before the end, the frame is `incomplete`.
+- Reply: `MDSIMG;ok\n` or `MDSIMG;err=<header|size|incomplete|crc|format|decode>\n`, then `ttyack;`.
+  On an error the core name is shown.
+- Measured on the board (USB from a Mac): 9.5 KB JPEG 0.07 s, 16 KB PNG 0.08 s, 137 KB PNG 0.30 s,
+  transfer and decoding included.
+
 ## MiSTerLily commands (prefix `MDS`, unused by tty2oled)
 
 | Command | Reply |
@@ -73,4 +94,4 @@ not offer an update.
 | `MDSCORE,<core>` | Show the core name (no picture transfer) |
 | `MDSSHOT` | `MDSSHOT,<w>,<h>,<bytes>\n`, then `ttyack;`, then the frame buffer (RGB565 big-endian, row-major). `tools/screenshot.py` saves it as PNG |
 
-`lastimg` result: 0 = ok, 1 = no data, 2 = bad length.
+`lastimg` result: 0 = ok, 1 = no data, 2 = bad length. `asseterr`: last `MDSIMG` error or `none`.

@@ -1,9 +1,11 @@
 #include "app/App.h"
 
 #include <Arduino.h>
+#include <esp_heap_caps.h>
 #include <stdio.h>
 #include <string.h>
 
+#include "Crc32.h"
 #include "config.h"
 #include "ui/CoreScreen.h"
 #include "ui/LegacyCanvas.h"
@@ -34,6 +36,10 @@ App::App(DisplayManager& display, SerialTransport& transport)
     : display_(display), transport_(transport), parser_(*this) {}
 
 void App::begin() {
+  assetBuffer_ = static_cast<uint8_t*>(heap_caps_malloc(proto::kMaxAssetBytes, MALLOC_CAP_SPIRAM));
+  parser_.setAssetBuffer(assetBuffer_, assetBuffer_ ? proto::kMaxAssetBytes : 0);
+  LOGF("asset buffer %s", assetBuffer_ ? "ok" : "missing");
+
   // The sketch prints "ttyrdy;" here, but no tty2oled script reads it. Over USB it stays
   // queued until the next reply and then corrupts that reply (installer.sh reads one line for
   // CMDHWINF), so we do not send it.
@@ -76,6 +82,7 @@ void App::onImage(const proto::ImageFrame& frame) {
   const std::string_view command(frame.commandLine);
   const proto::CoreCommand cc = proto::parseCoreCommand(command);
   setCore(cc.core);
+  assetValid_ = false;
   if (frame.result == proto::ImageResult::Ok) {
     memcpy(picture_, frame.data, frame.length);
     pictureFormat_ = frame.format;
@@ -86,6 +93,70 @@ void App::onImage(const proto::ImageFrame& frame) {
   // CMDAPD only loads the picture; CMDSPIC shows it later.
   if (command.substr(0, 6) == "CMDCOR") showCore();
   ack();
+}
+
+void App::onAsset(const proto::AssetFrame& frame) {
+  ++imagesReceived_;
+  const std::string_view header(frame.commandLine);
+  const char* error = nullptr;
+  // The parser already wrote over the buffer, so the previous asset is gone either way.
+  assetValid_ = false;
+  pictureFormat_ = proto::ImageFormat::None;
+  // The core name is the last field; take it first so a failed picture still shows the name.
+  std::string_view f[4];
+  if (header.size() > 7 && proto::splitFields(header.substr(7), f, 4) == 4) setCore(f[3]);
+  if (frame.result == proto::AssetResult::Ok && decodeAsset(header, frame, &error)) {
+    lastAssetError_ = "none";
+    transport_.write("MDSIMG;ok\n");
+  } else {
+    if (frame.result == proto::AssetResult::BadHeader) error = "header";
+    if (frame.result == proto::AssetResult::TooLarge) error = "size";
+    if (frame.result == proto::AssetResult::Incomplete) error = "incomplete";
+    lastAssetError_ = error ? error : "unknown";
+    char reply[40];
+    snprintf(reply, sizeof(reply), "MDSIMG;err=%s\n", lastAssetError_);
+    transport_.write(reply);
+    // Still a core change: show the name rather than the previous core's picture.
+    showCore();
+  }
+  LOGF("asset '%s' result %d error %s", frame.commandLine, (int)frame.result, lastAssetError_);
+  ack();
+}
+
+bool App::decodeAsset(std::string_view header, const proto::AssetFrame& frame, const char** error) {
+  // MDSIMG,<bytes>,<crc32 hex>,<png|jpg>,<core>
+  std::string_view f[4];
+  if (proto::splitFields(header.substr(7), f, 4) != 4 || f[1].size() != 8) {
+    *error = "header";
+    return false;
+  }
+  uint32_t crc = 0;
+  for (char c : f[1]) {
+    int v = (c >= '0' && c <= '9') ? c - '0' : (c >= 'a' && c <= 'f') ? c - 'a' + 10 : (c >= 'A' && c <= 'F') ? c - 'A' + 10 : -1;
+    if (v < 0) {
+      *error = "header";
+      return false;
+    }
+    crc = (crc << 4) | static_cast<uint32_t>(v);
+  }
+  if (proto::crc32(frame.data, frame.length) != crc) {
+    *error = "crc";
+    return false;
+  }
+  const bool png = f[2] == "png";
+  if (!png && f[2] != "jpg") {
+    *error = "format";
+    return false;
+  }
+  if (!CoreScreen::drawAsset(display_, png ? CoreScreen::AssetFormat::Png : CoreScreen::AssetFormat::Jpeg,
+                             frame.data, frame.length)) {
+    *error = "decode";
+    return false;
+  }
+  assetValid_ = true;
+  assetIsPng_ = png;
+  assetLength_ = frame.length;
+  return true;
 }
 
 void App::onDiscard(proto::DiscardReason reason, size_t length) {
@@ -101,6 +172,7 @@ void App::handle(const proto::Command& cmd, std::string_view line) {
     case CommandId::MdsCore:
       setCore(cmd.args);
       pictureFormat_ = proto::ImageFormat::None;
+      assetValid_ = false;
       showCore();
       break;
     case CommandId::ShowCoreName:
@@ -193,6 +265,10 @@ void App::setCore(std::string_view name) {
 
 void App::showCore() {
   const std::string_view name(coreName_, coreNameLength_);
+  if (assetValid_ && CoreScreen::drawAsset(display_, assetIsPng_ ? CoreScreen::AssetFormat::Png : CoreScreen::AssetFormat::Jpeg,
+                                           assetBuffer_, assetLength_)) {
+    return;
+  }
   if (pictureFormat_ == proto::ImageFormat::None) {
     CoreScreen::drawNameOnly(display_, name);
     return;
@@ -233,15 +309,15 @@ void App::sendHardwareInfo() {
 }
 
 void App::sendInfo() {
-  char line[240];
+  char line[280];
   const int n = snprintf(line, sizeof(line),
                          "MDSINFO;fw=%s;board=T-Display-S3;psram=%u;fb=%s;uptime_ms=%lu;reset=%d;"
-                         "lines=%lu;images=%lu;discards=%lu;txdrop=%lu;txstale=%lu;lastimg=%d:%u;core=%s\n",
+                         "lines=%lu;images=%lu;discards=%lu;txdrop=%lu;txstale=%lu;lastimg=%d:%u;asseterr=%s;core=%s\n",
                          MDS_FW_VERSION, (unsigned)ESP.getPsramSize(), display_.hasFramebuffer() ? "psram" : "direct",
                          (unsigned long)millis(), (int)esp_reset_reason(), (unsigned long)linesReceived_,
                          (unsigned long)imagesReceived_, (unsigned long)discards_,
                          (unsigned long)transport_.droppedWrites(), (unsigned long)transport_.staleFlushes(),
-                         (int)lastImageResult_, (unsigned)lastImageBytes_, coreName_);
+                         (int)lastImageResult_, (unsigned)lastImageBytes_, lastAssetError_, coreName_);
   if (n > 0) transport_.write(line, static_cast<size_t>(n) < sizeof(line) ? n : sizeof(line) - 1);
 }
 

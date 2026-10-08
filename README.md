@@ -6,8 +6,9 @@ When MiSTer loads a core, the display shows that system's logo and name.
 It speaks the serial protocol of [MiSTer_tty2oled](https://github.com/venice1200/MiSTer_tty2oled),
 so the unmodified tty2oled daemon and its picture library drive it over native USB.
 
-Status: **Phase 4** — tty2oled compatibility works end to end on the bench (board + real tty2oled
-daemon in a Linux container). Not yet tested on a real MiSTer.
+Status: **Phase 5** in progress — tty2oled compatibility works end to end on the bench (board + real
+tty2oled daemon in a Linux container); colour PNG/JPEG pictures work on the board (the MiSTer-side
+daemon that sends them is next). Not yet tested on a real MiSTer.
 
 ## Hardware
 
@@ -76,8 +77,23 @@ python3 tests/fixtures/make_fixtures.py                    # rebuild the parser 
 See [docs/mister-install.md](docs/mister-install.md). In short: set `TTY2OLED_UPDATE="no"`, install
 tty2oled with its updater, copy `mister/` to `/media/fat/MiSTerLily` and run `install.sh`.
 
+## Colour pictures
+
+Besides the tty2oled logos, the display shows full-colour 320×170 PNG or JPEG pictures sent with the
+`MDSIMG` command ([docs/protocol.md](docs/protocol.md)). Prepare them with:
+
+```sh
+python3 tools/convert_asset.py my_picture.png art/PSX.png    # any size -> 320x170, needs Pillow
+python3 tools/convert_asset.py --check art/PSX.png           # can the display show it?
+python3 tools/fake_mister.py /dev/cu.usbmodemXXXX --art art PSX
+```
+
+The file name is the core name. PNG for logos and sharp artwork; JPEG (baseline) for photos.
+The panel shows 16-bit colour; `--dither` avoids bands in smooth gradients.
+
 ## What the screen shows
 
+- A core with a colour picture: the picture, full screen.
 - A core with a tty2oled picture: the picture scaled to the full width (256×64 → 320×80, smoothed),
   centered, no text (the logos carry the name).
 - A core without a picture, or a failed transfer: the system name, large, in the Commodore 64 font.

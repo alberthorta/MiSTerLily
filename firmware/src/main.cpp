@@ -29,5 +29,6 @@ void setup() {
 
 void loop() {
   app.loop();
-  delay(1);
+  // While a picture arrives, read again at once: each pause caps the speed at 64 bytes per ms.
+  if (!app.receiving()) delay(1);
 }

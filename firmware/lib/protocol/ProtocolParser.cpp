@@ -2,6 +2,8 @@
 
 #include <string.h>
 
+#include "Command.h"
+
 namespace proto {
 
 namespace {
@@ -30,6 +32,18 @@ void ProtocolParser::feed(const uint8_t* data, size_t length, uint32_t nowMs) {
 
   size_t i = 0;
   while (i < length) {
+    if (state_ == State::Asset) {
+      size_t take = assetExpected_ - assetReceived_;
+      if (take > length - i) take = length - i;
+      // Too large: keep counting so the stream stays in sync, but store nothing.
+      if (assetExpected_ <= assetCapacity_) memcpy(asset_ + assetReceived_, data + i, take);
+      assetReceived_ += take;
+      i += take;
+      if (assetReceived_ == assetExpected_) {
+        finishAsset(assetExpected_ <= assetCapacity_ ? AssetResult::Ok : AssetResult::TooLarge);
+      }
+      continue;
+    }
     if (state_ == State::Image) {
       size_t take = kImageBufferBytes - imageLength_;
       if (take > length - i) take = length - i;
@@ -62,6 +76,9 @@ void ProtocolParser::poll(uint32_t nowMs) {
         finishImage(imageLength_ == kXbmBytes ? ImageResult::Ok : ImageResult::BadLength);
       }
       break;
+    case State::Asset:
+      if (idle >= kAssetIdleTimeoutMs) finishAsset(AssetResult::Incomplete);
+      break;
   }
 }
 
@@ -70,6 +87,7 @@ void ProtocolParser::reset() {
   lineLength_ = 0;
   discarded_ = 0;
   imageLength_ = 0;
+  assetReceived_ = 0;
 }
 
 void ProtocolParser::acceptLineByte(uint8_t b) {
@@ -111,6 +129,11 @@ void ProtocolParser::completeLine() {
     startImage();
     return;
   }
+  if (startsWith(line_, n, "MDSIMG,")) {
+    memcpy(imageCommand_, line_, n + 1);
+    startAsset();
+    return;
+  }
   listener_.onLine(line_, n);
 }
 
@@ -132,6 +155,36 @@ void ProtocolParser::finishImage(ImageResult result) {
   state_ = State::Line;
   imageLength_ = 0;
   listener_.onImage(frame);
+}
+
+void ProtocolParser::startAsset() {
+  // "MDSIMG,<bytes>,...": only the length matters here; the rest is for the listener.
+  std::string_view fields[3];
+  const std::string_view args = std::string_view(imageCommand_).substr(7);
+  int32_t bytes = 0;
+  // A length beyond the protocol limit is treated as a broken header rather than skipped: the
+  // parser would otherwise swallow everything that follows.
+  if (splitFields(args, fields, 3) < 2 || !parseInt(fields[0], bytes) || bytes <= 0 ||
+      static_cast<size_t>(bytes) > kMaxAssetBytes) {
+    assetReceived_ = 0;
+    finishAsset(AssetResult::BadHeader);
+    return;
+  }
+  state_ = State::Asset;
+  assetExpected_ = static_cast<size_t>(bytes);
+  assetReceived_ = 0;
+}
+
+void ProtocolParser::finishAsset(AssetResult result) {
+  AssetFrame frame;
+  frame.commandLine = imageCommand_;
+  frame.result = result;
+  frame.data = (result == AssetResult::Ok) ? asset_ : nullptr;
+  frame.length = assetReceived_;
+
+  state_ = State::Line;
+  assetReceived_ = 0;
+  listener_.onAsset(frame);
 }
 
 }  // namespace proto
