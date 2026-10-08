@@ -40,7 +40,7 @@ The host should set the port raw (`stty ... raw -echo -hupcl`), like tty2oled do
 | Command | Behaviour here |
 |---|---|
 | `<core name>` (any other line) | Show the core name (text screen) |
-| `CMDCOR,<core>[,t]` + picture | Show the picture (1:1, centered) with the name below; on a missing/bad picture show the name. `t` is accepted and ignored (no transitions yet) |
+| `CMDCOR,<core>[,t]` + picture | Show the picture scaled to 320×80 (area-averaged), centered, no text; on a missing/bad picture show the name. `t` is accepted and ignored (no transitions yet) |
 | `CMDAPD,<core>` + picture | Store the picture and name, do not draw |
 | `CMDSPIC[,t]` | Show the stored core screen |
 | `CMDSNAM` | Show the name screen |

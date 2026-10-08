@@ -219,8 +219,9 @@ Other bench facts:
 ## 8. Rendering legacy artwork
 
 - 256×64 into 320×170. A 1.25× scale (320×80) is not an integer, so nearest-neighbour makes pixel logos
-  uneven. Default: draw at 1× centered horizontally (32 px margins), in the top area, core name below.
-  The scale is a constant so we can try 1.25× with filtering later.
+  uneven. First version drew 1:1 with the name below; on the board the logo looked small (about 34 mm
+  wide versus 77 mm on the 3.12" OLED). Decision (2026-10-08, with the user): scale to the full width
+  with exact area averaging (`lib/legacyart`), center vertically, and draw no text.
 - GSC levels 0..15 map to a tint ramp (default: white/grey on black). XBM 1 = foreground, 0 = background.
 - Transition effects (`t` in `CMDCOR`) are parsed and ignored for now.
 

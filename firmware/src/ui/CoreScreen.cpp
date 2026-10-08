@@ -16,11 +16,10 @@ constexpr int kAccentWidth = 64;
 constexpr int kAccentHeight = 3;
 constexpr int kAccentGap = 10;
 
-// Artwork layout: 256x64 picture, then the name (at most 2x, 16 px per line).
-constexpr int kArtTop = 18;
-constexpr int kArtNameTop = kArtTop + LegacyAssetRenderer::kHeight + 14;
-constexpr int kArtNameHeight = 40;
-constexpr int kArtNameMaxScale = 2;
+// tty2oled pictures are 256x64 (4:1). Scaled to the full screen width (1.25x, 320x80) and
+// centered vertically; the logo carries the name, so no text is drawn.
+constexpr int kArtWidth = 320;
+constexpr int kArtHeight = 80;
 
 bool sameIgnoringCase(std::string_view a, std::string_view b) {
   if (a.size() != b.size()) return false;
@@ -74,16 +73,11 @@ void drawWithArtwork(DisplayManager& display, std::string_view coreName, proto::
   const int h = display.height();
   g.fillScreen(theme::kBackground);
 
-  const int artX = (w - LegacyAssetRenderer::kWidth) / 2;
-  if (!LegacyAssetRenderer::draw(g, format, data, length, artX, kArtTop, theme::kArtwork, theme::kBackground)) {
+  if (!LegacyAssetRenderer::draw(g, format, data, length, (w - kArtWidth) / 2, (h - kArtHeight) / 2, kArtWidth,
+                                 kArtHeight, theme::kArtwork, theme::kBackground)) {
     drawNameOnly(display, coreName);
     return;
   }
-
-  const std::string_view name = coreinfo::displayName(coreName);
-  const TextRenderer::Box box{kMargin, kArtNameTop, w - 2 * kMargin, kArtNameHeight};
-  TextRenderer::drawFittedC64(g, name, box, theme::kText, kArtNameMaxScale);
-  drawCoreNameFootnote(g, name, coreName, w, h);
   display.present();
 }
 

@@ -78,7 +78,8 @@ tty2oled with its updater, copy `mister/` to `/media/fat/MiSTerLily` and run `in
 
 ## What the screen shows
 
-- A core with a tty2oled picture: the picture (256×64, 1:1, centered) and the system name below.
+- A core with a tty2oled picture: the picture scaled to the full width (256×64 → 320×80, smoothed),
+  centered, no text (the logos carry the name).
 - A core without a picture, or a failed transfer: the system name, large, in the Commodore 64 font.
 - Common systems get a friendly name (`PSX` → PLAYSTATION) with the MiSTer core name small below.
 - Start-up: "MiSTer / T-Display-S3" and the firmware version.
@@ -101,8 +102,8 @@ Full command list: [docs/protocol.md](docs/protocol.md).
 
 - Not tested on a MiSTer yet (the QMTECH board has not arrived). Open points are listed at the end
   of [docs/mister-install.md](docs/mister-install.md).
-- tty2oled pictures are monochrome/greyscale and 256×64; they are not scaled up (1.25× would make
-  pixel logos uneven). Native colour artwork is Phase 5.
+- tty2oled pictures are monochrome/greyscale and 256×64. Scaled 1.25× with area averaging, edges
+  are slightly soft. Native colour artwork is Phase 5.
 - If nobody reads the replies, one `ttyack;` stays in the USB FIFO and reaches the next reader first.
 - After unplugging/replugging the display, restart the tty2oled daemon (it sets the port up only at
   start).
