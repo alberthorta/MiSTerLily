@@ -60,7 +60,7 @@ def main():
             check("installer.sh parse", mcu == "HWTDISPS3" and ver.startswith("MDS-"), "MCUtype={} SWver={}".format(mcu, ver))
 
         port.drain()
-        burst = "QWERTZ\nCMDCON,100\nCMDSETTIME,1759939200\nCMDSAVER,0,0,0\nCMDNULL\n"
+        burst = "QWERTZ\nCMDCON,255\nCMDSETTIME,1759939200\nCMDSAVER,0,0,0\nCMDNULL\n"
         port.write(burst)
         got = port.read_for(0.5)
         check("5 commands in one write -> 5 acks", got.count(b"ttyack;") == 5, repr(got))
