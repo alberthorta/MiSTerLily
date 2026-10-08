@@ -70,6 +70,7 @@ Other tests:
 ```sh
 bash tests/mister/test_find_display.sh                     # find-display.sh against a fake sysfs
 bash tests/mister/run_e2e.sh                               # Docker: real tty2oled.sh, and our daemon
+bash tests/mister/run_updater_test.sh                      # Docker: tty2oled updater after our installer
 python3 tools/fake_mister.py --selftest <Pictures folder>  # picture decoding vs tail | xxd
 python3 tests/fixtures/make_fixtures.py                    # rebuild the parser test fixtures
 python3 tests/fixtures/make_art.py                         # rebuild the colour test pictures
