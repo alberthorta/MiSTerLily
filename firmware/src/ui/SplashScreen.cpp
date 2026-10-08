@@ -6,10 +6,9 @@ namespace SplashScreen {
 
 namespace {
 
-// The hint is Font2 at 2x (32 px). It fills most of the line below the logo, so the version moved
-// to the top-right corner, which the logo area leaves free.
-constexpr int kHintY = 149;
-constexpr float kHintScale = 2.0f;
+// The hint uses an anti-aliased font (a scaled bitmap font looked blocky). It fills most of the
+// line below the logo, so the version moved to the top-right corner, which the logo area leaves free.
+constexpr int kHintY = 140;
 
 bool drawLogo(lgfx::LovyanGFX& g, int w, const Logo& logo) {
   if (!logo.data || logo.size == 0) return false;
@@ -51,10 +50,9 @@ void draw(DisplayManager& display, const char* version, const char* hint, const 
 
   if (hint) {
     g.setTextDatum(lgfx::middle_center);
-    g.setTextColor(theme::kAccent);
-    g.setTextSize(kHintScale);
+    g.setTextColor(theme::kAccent, theme::kBackground);
+    g.setFont(&fonts::DejaVu24);
     g.drawString(hint, w / 2, kHintY);
-    g.setTextSize(1);
   }
 
   display.present();

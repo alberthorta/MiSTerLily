@@ -122,7 +122,7 @@ MDSIMG,<bytes>,<crc32>,<png|jpg>,<core>\n
   change wakes an idle sleep, but not a `CMDDOFF`.
 - **Start screen**: the stored start-up picture (centered in the top 320×130 area; text "MiSTer /
   T-Display-S3" if there is none or it cannot be decoded), the firmware version small in the top-right
-  corner, and after 10 s without any data "Waiting for MiSTer" (32 px) below the picture. The picture lives in LittleFS
+  corner, and after 10 s without any data "Waiting for MiSTer" (anti-aliased DejaVu 24) below the picture. The picture lives in LittleFS
   on the `spiffs` data partition, which firmware uploads do not touch.
 - **Menu screen**: a core named `MENU` without a picture shows time, date and the IP from `MDSNET`
   (once the time is known), redrawn every minute.
