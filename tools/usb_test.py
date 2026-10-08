@@ -43,7 +43,8 @@ def main():
 
     with Port(path) as port:
         reply = port.query("MDSPING", token="ttyack;")
-        check("MDSPING -> MDSPONG + ttyack", reply is not None and reply.startswith(b"MDSPONG\nttyack;"), repr(reply))
+        check("MDSPING -> MDSPONG;up=<ms> + ttyack",
+              reply is not None and re.match(rb"^MDSPONG;up=\d+\nttyack;", reply) is not None, repr(reply))
 
         before = info(port)
         check("MDSINFO", before is not None and before.get("fw") is not None, str(before))

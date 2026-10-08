@@ -4,7 +4,7 @@
 
 namespace SplashScreen {
 
-void draw(DisplayManager& display, const char* version) {
+void draw(DisplayManager& display, const char* version, const char* hint) {
   auto& g = display.canvas();
   const int w = display.width();
   const int h = display.height();
@@ -27,9 +27,11 @@ void draw(DisplayManager& display, const char* version) {
   g.setFont(&fonts::Font2);
   g.drawString(version, w - 6, h - 4);
 
-  // Lets a bring-up test confirm PSRAM without a UART adapter.
-  g.setTextDatum(lgfx::bottom_left);
-  g.drawString(display.hasFramebuffer() ? "fb: psram" : "fb: direct", 6, h - 4);
+  if (hint) {
+    g.setTextDatum(lgfx::middle_center);
+    g.setTextColor(theme::kAccent);
+    g.drawString(hint, w / 2, 146);
+  }
 
   display.present();
 }

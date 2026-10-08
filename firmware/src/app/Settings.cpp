@@ -1,0 +1,65 @@
+#include "app/Settings.h"
+
+#include <Preferences.h>
+
+#include "util/Log.h"
+
+namespace {
+
+constexpr const char* kNamespace = "mds";
+constexpr const char* kContrastKey = "con";
+constexpr const char* kRotatedKey = "rot";
+constexpr const char* kIdleKey = "idle";
+constexpr uint8_t kMinBacklight = 40;
+
+void put(const char* key, uint32_t value) {
+  Preferences p;
+  if (!p.begin(kNamespace, false)) return;
+  p.putUInt(key, value);
+  p.end();
+}
+
+}  // namespace
+
+void Settings::load() {
+  Preferences p;
+  if (!p.begin(kNamespace, true)) return;  // first boot: nothing stored yet, keep defaults
+  const uint32_t con = p.getUInt(kContrastKey, kDefaultContrast);
+  const uint32_t rot = p.getUInt(kRotatedKey, 0);
+  const uint32_t idle = p.getUInt(kIdleKey, 0);
+  p.end();
+  // Stored values are trusted only within range.
+  contrast_ = con <= 255 ? static_cast<uint8_t>(con) : kDefaultContrast;
+  rotated_ = rot == 1;
+  idleMinutes_ = idle <= kMaxIdleMinutes ? static_cast<uint16_t>(idle) : 0;
+  LOGF("settings: contrast %u rotated %d idle %u min", contrast_, rotated_, idleMinutes_);
+}
+
+void Settings::setContrast(uint8_t v) {
+  if (v == contrast_) return;
+  contrast_ = v;
+  put(kContrastKey, v);
+}
+
+void Settings::setRotated(bool v) {
+  if (v == rotated_) return;
+  rotated_ = v;
+  put(kRotatedKey, v ? 1 : 0);
+}
+
+void Settings::setIdleMinutes(uint16_t v) {
+  if (v > kMaxIdleMinutes) v = kMaxIdleMinutes;
+  if (v == idleMinutes_) return;
+  idleMinutes_ = v;
+  put(kIdleKey, v);
+}
+
+void Settings::resetToDefaults() {
+  setContrast(kDefaultContrast);
+  setRotated(false);
+  setIdleMinutes(0);
+}
+
+uint8_t Settings::backlightFor(uint8_t contrast) {
+  return static_cast<uint8_t>(kMinBacklight + contrast * (255 - kMinBacklight) / 255);
+}

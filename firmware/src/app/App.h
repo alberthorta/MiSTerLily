@@ -5,7 +5,9 @@
 #include <string_view>
 
 #include "Command.h"
+#include "Presence.h"
 #include "ProtocolParser.h"
+#include "app/Settings.h"
 #include "transport/SerialTransport.h"
 #include "ui/DisplayManager.h"
 
@@ -13,7 +15,7 @@
 // keeps the state (current core, its picture, display settings) and decides what to draw.
 class App : public proto::ParserListener {
  public:
-  App(DisplayManager& display, SerialTransport& transport);
+  App(DisplayManager& display, SerialTransport& transport, Settings& settings);
 
   void begin();
   void loop();
@@ -30,7 +32,14 @@ class App : public proto::ParserListener {
  private:
   static constexpr size_t kMaxCoreName = 63;
 
+  enum class Screen : uint8_t { Splash, Core, Waiting, Other };
+
   void handle(const proto::Command& cmd, std::string_view line);
+  static bool changesScreen(proto::CommandId id);
+  void noteActivity();
+  void handlePresence(presence::Event event);
+  void handleConfig(std::string_view args);
+  void sendConfig();
   void setCore(std::string_view name);
   void showCore();
   void showSplash();
@@ -46,7 +55,10 @@ class App : public proto::ParserListener {
 
   DisplayManager& display_;
   SerialTransport& transport_;
+  Settings& settings_;
   proto::ProtocolParser parser_;
+  presence::Presence presence_;
+  Screen screen_ = Screen::Splash;
 
   char coreName_[kMaxCoreName + 1] = {};
   size_t coreNameLength_ = 0;

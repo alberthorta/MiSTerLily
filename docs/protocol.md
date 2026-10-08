@@ -89,9 +89,28 @@ MDSIMG,<bytes>,<crc32>,<png|jpg>,<core>\n
 
 | Command | Reply |
 |---|---|
-| `MDSPING` | `MDSPONG\n` |
+| `MDSPING` | `MDSPONG;up=<uptime ms>\n`. Our daemon sends it every 5 s: a lower uptime means the board restarted (resend everything); once pings were seen, 15 s without one shows "Waiting for MiSTer". Pings do not wake an idle-sleeping screen |
+| `MDSCFG` | `MDSCFG;contrast=<0..255>;rotate=<0\|1>;idle=<minutes>\n` (settings stored in flash) |
+| `MDSCFG,idle,<minutes>` | Backlight off after `<minutes>` without a core change or display command (0 = never, the default; max 1440); replies like `MDSCFG` |
+| `MDSCFG,reset` | Default settings (brightness 255, no rotation, no idle sleep) |
 | `MDSINFO` | `MDSINFO;fw=..;board=T-Display-S3;psram=..;fb=psram;uptime_ms=..;reset=..;lines=..;images=..;discards=..;txdrop=..;txstale=..;lastimg=<result>:<bytes>;core=..\n` |
 | `MDSCORE,<core>` | Show the core name (no picture transfer) |
 | `MDSSHOT` | `MDSSHOT,<w>,<h>,<bytes>\n`, then `ttyack;`, then the frame buffer (RGB565 big-endian, row-major). `tools/screenshot.py` saves it as PNG |
 
 `lastimg` result: 0 = ok, 1 = no data, 2 = bad length. `asseterr`: last `MDSIMG` error or `none`.
+`host`: `none` (no ping seen, e.g. stock tty2oled daemon), `ok` or `lost`. `idle`: `awake` or `sleep`.
+`reset`: ESP-IDF reset reason (1 power-on, 3 software/`CMDRESET`, 6 task watchdog, ...).
+
+`MDSHANG` exists only in the `tdisplay_s3_debug` build: it stops the main loop to check the watchdog.
+
+## Device behaviour
+
+- **Settings**: `CMDCON` (brightness) and `CMDROT` (rotation) are stored in flash, written only when
+  they change, and applied before the first frame after boot. `CMDSTTYACK` is not stored.
+- **Watchdog**: if the main loop stops for 8 s the board restarts. The USB port stays (no
+  re-enumeration); the ROM boot text appears on the port. Our daemon notices the restart through
+  `MDSPONG` and sends the core again. With the stock tty2oled daemon the start screen stays until
+  the next core change (as with tty2oled's own hardware).
+- **Idle sleep**: off by default (an LCD has no burn-in). `CMDDOFF`/`CMDDON` stay independent: a core
+  change wakes an idle sleep, but not a `CMDDOFF`.
+- **Start screen**: after 10 s without any data it adds "Waiting for MiSTer".

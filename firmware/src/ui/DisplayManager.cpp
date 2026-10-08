@@ -5,7 +5,7 @@
 #include "config.h"
 #include "util/Log.h"
 
-bool DisplayManager::begin() {
+bool DisplayManager::begin(uint8_t rotation) {
   pinMode(cfg::pin::kPowerOn, OUTPUT);
   digitalWrite(cfg::pin::kPowerOn, HIGH);
 
@@ -16,7 +16,7 @@ bool DisplayManager::begin() {
     return false;
   }
   lcd_.setBrightness(0);
-  lcd_.setRotation(cfg::kRotationNormal);
+  lcd_.setRotation(rotation);
   lcd_.fillScreen(TFT_BLACK);
 
   frame_.setColorDepth(16);
@@ -39,7 +39,12 @@ void DisplayManager::present() {
 
 void DisplayManager::setBrightness(uint8_t level) {
   brightness_ = level;
-  if (awake_) lcd_.setBrightness(level);
+  if (awake_ && backlightOn_) lcd_.setBrightness(level);
+}
+
+void DisplayManager::setBacklightOn(bool on) {
+  backlightOn_ = on;
+  if (awake_) lcd_.setBrightness(on ? brightness_ : 0);
 }
 
 void DisplayManager::setRotation(uint8_t rotation) {
@@ -59,7 +64,7 @@ void DisplayManager::wake() {
   awake_ = true;
   lcd_.wakeup();
   present();
-  lcd_.setBrightness(brightness_);
+  if (backlightOn_) lcd_.setBrightness(brightness_);
 }
 
 int DisplayManager::width() const { return cfg::kScreenWidth; }

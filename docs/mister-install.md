@@ -78,8 +78,12 @@ echo SNES > /tmp/CORENAME                         # shows SNES now
 cat /tmp/mister-display.log                       # what was sent, connections, picture errors
 ```
 
-Settings are in `/media/fat/MiSTerLily/config.ini` (brightness, rotation, picture folders, a fixed
-`TTYDEV`); restart with `S60misterlily restart` after a change.
+Settings are in `/media/fat/MiSTerLily/config.ini` (brightness, rotation, idle sleep, picture
+folders, a fixed `TTYDEV`); restart with `S60misterlily restart` after a change.
+
+The daemon pings the display every 5 s. If the display restarts (watchdog), it sends the core again;
+if it stops answering, the daemon opens the port again. If the daemon stops (or MiSTer shuts down
+while the display keeps power), the display shows "Waiting for MiSTer" after 15 s.
 
 In tty2oled mode, use tty2oled's own log instead: `debug="true"` in `tty2oled-user.ini`, restart with
 `/media/fat/tty2oled/S60tty2oled restart`, read `/tmp/tty2oled`. Brightness there comes from

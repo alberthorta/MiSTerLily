@@ -1,0 +1,32 @@
+#pragma once
+
+#include <stdint.h>
+
+// Display settings kept in NVS across power cycles, so the first frame after boot already has the
+// right brightness and rotation. Written only when a value changes: tty2oled sends CMDCON and
+// CMDROT every time its daemon starts.
+class Settings {
+ public:
+  static constexpr uint8_t kDefaultContrast = 255;
+  static constexpr uint16_t kMaxIdleMinutes = 1440;
+
+  void load();
+
+  uint8_t contrast() const { return contrast_; }  // CMDCON scale 0..255
+  bool rotated() const { return rotated_; }       // CMDROT,1
+  uint16_t idleMinutes() const { return idleMinutes_; }  // 0 = never sleep
+
+  void setContrast(uint8_t v);
+  void setRotated(bool v);
+  void setIdleMinutes(uint16_t v);
+  void resetToDefaults();
+
+  // CMDCON is OLED contrast (tty2oled default 100). On a backlit TFT 0 must not mean "black",
+  // so 0..255 maps onto a usable backlight range.
+  static uint8_t backlightFor(uint8_t contrast);
+
+ private:
+  uint8_t contrast_ = kDefaultContrast;
+  bool rotated_ = false;
+  uint16_t idleMinutes_ = 0;
+};

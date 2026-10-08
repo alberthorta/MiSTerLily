@@ -6,9 +6,10 @@ When MiSTer loads a core, the display shows that system's logo and name.
 It speaks the serial protocol of [MiSTer_tty2oled](https://github.com/venice1200/MiSTer_tty2oled),
 so the unmodified tty2oled daemon and its picture library drive it over native USB.
 
-Status: **Phase 5** — colour PNG/JPEG pictures and our own MiSTer daemon (colour picture → tty2oled
-logo → core name, automatic reconnection) work on the bench: board on a Mac, scripts in Linux
-containers. tty2oled compatibility mode works too. Not yet tested on a real MiSTer.
+Status: **Phase 6** (polish) in progress — colour pictures, our own MiSTer daemon with heartbeat and
+reconnection, watchdog, stored settings, idle sleep and a "Waiting for MiSTer" screen work on the
+bench (board on a Mac, scripts in Linux containers). tty2oled compatibility mode works too.
+Not yet tested on a real MiSTer.
 
 ## Hardware
 
@@ -107,7 +108,10 @@ The panel shows 16-bit colour; `--dither` avoids bands in smooth gradients.
   centered, no text (the logos carry the name).
 - A core without a picture, or a failed transfer: the system name, large, in the Commodore 64 font.
 - Common systems get a friendly name (`PSX` → PLAYSTATION) with the MiSTer core name small below.
-- Start-up: "MiSTer / T-Display-S3" and the firmware version.
+- Start-up: "MiSTer / T-Display-S3" and the firmware version; "Waiting for MiSTer" if nothing
+  arrives within 10 s, or when our daemon stops answering for 15 s.
+- Brightness and rotation are remembered across power cycles. Optional idle sleep
+  (`IDLE_MINUTES` in the daemon config, or `MDSCFG,idle,<minutes>`).
 
 ## tty2oled compatibility
 

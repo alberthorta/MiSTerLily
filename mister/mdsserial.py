@@ -63,6 +63,22 @@ class Port:
             view = view[n:]
         termios.tcdrain(self.fd)
 
+    def read_available(self):
+        """Whatever is waiting right now, without waiting. Raises OSError if the device is gone."""
+        out = bytearray()
+        while True:
+            r, _, _ = select.select([self.fd], [], [], 0)
+            if not r:
+                return bytes(out)
+            try:
+                chunk = os.read(self.fd, 4096)
+            except BlockingIOError:
+                return bytes(out)
+            if not chunk:
+                # Readable but empty: the device went away (macOS returns EOF instead of an error).
+                raise OSError("device closed")
+            out += chunk
+
     def read_for(self, seconds):
         """Everything that arrives within `seconds`."""
         out = bytearray()

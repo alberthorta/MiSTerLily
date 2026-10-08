@@ -8,7 +8,7 @@
 // present(), which pushes the whole frame in one transfer (no visible partial redraws).
 class DisplayManager {
  public:
-  bool begin();
+  bool begin(uint8_t rotation);
 
   lgfx::LovyanGFX& canvas();
   void present();
@@ -19,6 +19,9 @@ class DisplayManager {
   void sleep();
   void wake();
   bool awake() const { return awake_; }
+  // Idle sleep: backlight only, independent of sleep()/wake() (CMDDOFF/CMDDON), which it never
+  // overrides. The panel keeps running, so the next frame is ready when the light comes back.
+  void setBacklightOn(bool on);
 
   int width() const;
   int height() const;
@@ -32,5 +35,6 @@ class DisplayManager {
   LGFX_Sprite frame_{&lcd_};
   bool framebufferOk_ = false;
   bool awake_ = true;
+  bool backlightOn_ = true;
   uint8_t brightness_ = 0;
 };

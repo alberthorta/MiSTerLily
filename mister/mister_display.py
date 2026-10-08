@@ -9,7 +9,10 @@ Replaces the tty2oled daemon (and reuses its picture library). For every core ch
 
 It finds the display with find-display.sh, keeps the port open, reads every reply (so nothing
 piles up in the device), and when the display disappears it waits for it, sets the port up again
-and resends the current core. While /tmp/tty2oled_sleep exists (MiSTer SAM) it sends nothing.
+and resends the current core. Every few seconds it sends MDSPING: the uptime in the answer shows a
+board restart (watchdog, CMDRESET), after which the core is sent again; no answer at all for a while
+means the display is stuck or gone, and the port is opened again. While /tmp/tty2oled_sleep exists
+(MiSTer SAM) it sends nothing.
 
 Usage (normally started by S60misterlily):
   python3 mister_display.py [--config FILE] [--device DEV] [--corename FILE] [-v]
@@ -37,10 +40,14 @@ DEFAULTS = {
     "USE_TEXT_PICTURE": "no",
     "CONTRAST": "255",
     "ROTATE": "no",
+    "IDLE_MINUTES": "",  # backlight off after this many minutes without a core change; "" = keep the board's
 }
 SLEEP_FILE = "/tmp/tty2oled_sleep"
 POLL_SECONDS = 0.1
 RETRY_SECONDS = 2.0
+PING_SECONDS = 5.0
+# No answer for this long: give up on the port and look for the display again.
+PONG_TIMEOUT_SECONDS = 15.0
 # A device node must exist this long before we open it: the kernel creates /dev/ttyACMn a moment
 # before the port is usable.
 SETTLE_SECONDS = 0.5
@@ -109,6 +116,12 @@ class Display:
         self.cfg = cfg
         self.port = None
         self.path = None
+        self.last_pong = 0.0
+        self.next_ping = 0.0
+        self.uptime = None
+        self.pending = b""
+        self.restarted = False  # set when a pong shows a lower uptime than before
+        self.pending = b""  # a reply line split across reads
 
     def connected(self):
         return self.port is not None
@@ -117,11 +130,22 @@ class Display:
         self.port = Port(path)
         self.path = path
         log("display connected: {}".format(path))
+        self.setup()
+
+    def setup(self):
+        """Settings the display needs after it was plugged in or restarted."""
         self.port.flush_stale()
         # We read every reply ourselves; acks would only add traffic.
         self.port.write("CMDSTTYACK,0\n")
         self.port.write("CMDCON,{}\n".format(self.cfg["CONTRAST"]))
         self.port.write("CMDROT,{}\n".format(1 if self.cfg["ROTATE"] == "yes" else 0))
+        if self.cfg["IDLE_MINUTES"].isdigit():
+            self.port.write("MDSCFG,idle,{}\n".format(int(self.cfg["IDLE_MINUTES"])))
+        # Local wall time as epoch seconds, the tty2oled convention (for a future clock screen).
+        self.port.write("CMDSETTIME,{}\n".format(int(time.time() + time.localtime().tm_gmtoff)))
+        self.last_pong = time.monotonic()
+        self.next_ping = 0.0
+        self.uptime = None
 
     def disconnect(self, why):
         if self.port:
@@ -136,11 +160,28 @@ class Display:
     def still_there(self):
         return self.port is not None and os.path.exists(self.path)
 
+    def heartbeat(self, now):
+        """Pings the display; raises OSError if it stopped answering."""
+        if now - self.last_pong > PONG_TIMEOUT_SECONDS:
+            raise OSError("display not answering")
+        if now >= self.next_ping:
+            self.port.write("MDSPING\n")
+            self.next_ping = now + PING_SECONDS
+
     def drain(self):
         """Reads replies; logs picture errors. Raises OSError if the device went away."""
-        data = self.port.read_for(0)
-        for line in data.split(b"\n"):
-            if line.startswith(b"MDSIMG;err"):
+        lines = (self.pending + self.port.read_available()).split(b"\n")
+        self.pending = lines.pop()[-256:]  # unterminated tail; bounded in case of garbage
+        for line in lines:
+            if line.startswith(b"MDSPONG"):
+                self.last_pong = time.monotonic()
+                up = line.split(b"up=", 1)[1] if b"up=" in line else b""
+                if up.isdigit():
+                    if self.uptime is not None and int(up) < self.uptime:
+                        log("display restarted (uptime {} ms)".format(int(up)))
+                        self.restarted = True
+                    self.uptime = int(up)
+            elif line.startswith(b"MDSIMG;err"):
                 log("display: " + line.decode(errors="replace"))
             elif line.strip():
                 debug("display: {!r}".format(line))
@@ -198,6 +239,12 @@ def run(args):
             if not display.still_there():
                 raise OSError("device node gone")
             display.drain()
+            display.heartbeat(time.monotonic())
+            if display.restarted:
+                # The board lost its settings and picture: set it up again and resend.
+                display.restarted = False
+                display.setup()
+                shown = None
 
             if os.path.exists(SLEEP_FILE):
                 if not sleeping:

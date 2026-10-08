@@ -47,6 +47,8 @@ enum class CommandId : uint8_t {
   MdsPing,  // MDSPING -> "MDSPONG"
   MdsInfo,  // MDSINFO -> one info line
   MdsCore,  // MDSCORE,<core name> -> show the core name (no picture transfer)
+  MdsCfg,   // MDSCFG -> settings; MDSCFG,idle,<minutes>; MDSCFG,reset
+  MdsHang,  // MDSHANG (test builds only): stop feeding the watchdog
   MdsShot,  // MDSSHOT -> "MDSSHOT,<w>,<h>,<bytes>\n" + "ttyack;" + framebuffer (RGB565 big-endian)
 };
 

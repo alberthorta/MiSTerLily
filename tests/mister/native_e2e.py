@@ -27,7 +27,8 @@ def check(name, ok, detail=""):
 
 
 class FakeDisplay:
-    """A pty whose slave is /dev/ttyACM0; collects everything the daemon writes."""
+    """A pty whose slave is /dev/ttyACM0; collects everything the daemon writes and answers
+    MDSPING like the firmware (MDSPONG;up=<uptime>)."""
 
     def __init__(self):
         self.master, self.slave = os.openpty()
@@ -36,14 +37,20 @@ class FakeDisplay:
         os.symlink(os.ttyname(self.slave), "/dev/ttyACM0")
         self.data = bytearray()
         self.alive = True
+        self.uptime = 100000
         threading.Thread(target=self._read, daemon=True).start()
 
     def _read(self):
         while self.alive:
             try:
-                self.data.extend(os.read(self.master, 65536))
+                chunk = os.read(self.master, 65536)
             except OSError:
                 time.sleep(0.01)
+                continue
+            self.data.extend(chunk)
+            for _ in range(chunk.count(b"MDSPING\n")):
+                self.uptime += 5000
+                os.write(self.master, "MDSPONG;up={}\n".format(self.uptime).encode())
 
     def unplug(self):
         os.remove("/dev/ttyACM0")
@@ -92,7 +99,9 @@ def main():
         set_core(core)
     data = bytes(disp.data)
 
-    check("setup sequence", data.startswith(b"CMDNULL\nCMDSTTYACK,0\nCMDCON,255\nCMDROT,0\n"), repr(data[:60]))
+    check("setup sequence", re.match(rb"CMDNULL\nCMDSTTYACK,0\nCMDCON,255\nCMDROT,0\nCMDSETTIME,\d+\n", data)
+          is not None, repr(data[:80]))
+    check("heartbeat pings sent", data.count(b"MDSPING\n") >= 1)
     check("MENU sent at start", b"MDSCORE,MENU\n" in data)
     png = open("/src/tests/fixtures/art/MDSTEST.png", "rb").read()
     m = re.search(rb"MDSIMG,(\d+),([0-9a-f]{8}),png,MDSTEST\n", data)
@@ -109,19 +118,30 @@ def main():
     time.sleep(4.0)
     data2 = bytes(disp2.data)
     check("reconnect: setup sent again", data2.startswith(b"CMDNULL\nCMDSTTYACK,0\n"), repr(data2[:40]))
-    check("reconnect: current core sent again", data2.endswith(b"MDSCORE,Atari5200\n"), repr(data2[-40:]))
+    check("reconnect: current core sent again", b"MDSCORE,Atari5200\n" in data2, repr(data2[-60:]))
     log = open("/tmp/mister-display.log").read()
     check("log shows lost and connected twice", "display lost" in log and log.count("display connected") == 2, log)
+
+    # The board restarts (watchdog, CMDRESET): the port stays, the uptime drops. The daemon must
+    # set it up again and resend the core.
+    disp2.uptime = 1000
+    before = len(disp2.data)
+    time.sleep(7.0)
+    after = bytes(disp2.data[before:])
+    check("restart: setup and core sent again", b"CMDSTTYACK,0\n" in after and b"MDSCORE,Atari5200\n" in after,
+          repr(after[-60:]))
+    check("restart logged", "display restarted" in open("/tmp/mister-display.log").read())
 
     # The sleep file (MiSTer SAM) pauses sending.
     open("/tmp/tty2oled_sleep", "w").close()
     time.sleep(0.3)
     before = len(disp2.data)
     set_core("SNES")
-    check("sleep file pauses", len(disp2.data) == before)
+    check("sleep file pauses", b"SNES" not in bytes(disp2.data[before:]))
+    before = len(disp2.data)
     os.remove("/tmp/tty2oled_sleep")
     time.sleep(0.8)
-    check("resumes after the sleep file", bytes(disp2.data).endswith(gsc))
+    check("resumes after the sleep file", gsc in bytes(disp2.data[before:]))
 
     rc = sh("bash {}/MiSTerLily/uninstall.sh".format(FAT))
     check("uninstall exit 0", rc == 0)

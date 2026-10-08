@@ -16,29 +16,26 @@
 namespace {
 
 constexpr size_t kReadChunkBytes = 512;
+// Upper bound per loop() call, so a host that never stops sending cannot starve the timers.
+constexpr int kMaxReadsPerLoop = 32;
 // A screenshot the host stops reading is abandoned after this long without progress.
 constexpr uint32_t kShotStallMs = 1000;
 // Lets the "ttyack;" of CMDRESET leave before the chip restarts.
 constexpr uint32_t kRestartDelayMs = 100;
-
-// CMDCON is OLED contrast 0..255 (tty2oled.sh sends CONTRAST=100 by default). On a backlit TFT
-// 0 must not mean "black", so map 0..255 onto a usable backlight range.
-constexpr uint8_t kMinBacklight = 40;
-uint8_t backlightForContrast(int32_t contrast) {
-  if (contrast < 0) contrast = 0;
-  if (contrast > 255) contrast = 255;
-  return static_cast<uint8_t>(kMinBacklight + contrast * (255 - kMinBacklight) / 255);
-}
+constexpr uint32_t kMsPerMinute = 60000;
+constexpr const char* kWaitingText = "Waiting for MiSTer";
 
 }  // namespace
 
-App::App(DisplayManager& display, SerialTransport& transport)
-    : display_(display), transport_(transport), parser_(*this) {}
+App::App(DisplayManager& display, SerialTransport& transport, Settings& settings)
+    : display_(display), transport_(transport), settings_(settings), parser_(*this) {}
 
 void App::begin() {
   assetBuffer_ = static_cast<uint8_t*>(heap_caps_malloc(proto::kMaxAssetBytes, MALLOC_CAP_SPIRAM));
   parser_.setAssetBuffer(assetBuffer_, assetBuffer_ ? proto::kMaxAssetBytes : 0);
   LOGF("asset buffer %s", assetBuffer_ ? "ok" : "missing");
+  presence_.setIdleTimeout(settings_.idleMinutes() * kMsPerMinute);
+  presence_.start(millis());
 
   // The sketch prints "ttyrdy;" here, but no tty2oled script reads it. Over USB it stays
   // queued until the next reply and then corrupts that reply (installer.sh reads one line for
@@ -48,12 +45,14 @@ void App::begin() {
 void App::loop() {
   uint8_t buffer[kReadChunkBytes];
   // Read until the FIFO is empty: while it is full the host is held off (NAK).
-  for (;;) {
+  for (int i = 0; i < kMaxReadsPerLoop; ++i) {
     const size_t n = transport_.read(buffer, sizeof(buffer));
     if (n == 0) break;
+    presence_.onTraffic(millis());
     parser_.feed(buffer, n, millis());
   }
   parser_.poll(millis());
+  handlePresence(presence_.update(millis()));
   pumpScreenshot(millis());
   transport_.poll(millis());
 
@@ -68,6 +67,7 @@ void App::onLine(const char* line, size_t length) {
   const std::string_view text(line, length);
   const proto::Command cmd = proto::parseCommand(text);
   LOGF("line '%s' -> %d", line, (int)cmd.id);
+  if (changesScreen(cmd.id)) noteActivity();
   handle(cmd, text);
   ack();
 }
@@ -79,6 +79,7 @@ void App::onImage(const proto::ImageFrame& frame) {
   LOGF("image '%s' result %d format %d bytes %u", frame.commandLine, (int)frame.result, (int)frame.format,
        (unsigned)frame.length);
 
+  noteActivity();
   const std::string_view command(frame.commandLine);
   const proto::CoreCommand cc = proto::parseCoreCommand(command);
   setCore(cc.core);
@@ -97,6 +98,7 @@ void App::onImage(const proto::ImageFrame& frame) {
 
 void App::onAsset(const proto::AssetFrame& frame) {
   ++imagesReceived_;
+  noteActivity();
   const std::string_view header(frame.commandLine);
   const char* error = nullptr;
   // The parser already wrote over the buffer, so the previous asset is gone either way.
@@ -176,6 +178,7 @@ void App::handle(const proto::Command& cmd, std::string_view line) {
       showCore();
       break;
     case CommandId::ShowCoreName:
+      screen_ = Screen::Core;
       CoreScreen::drawNameOnly(display_, std::string_view(coreName_, coreNameLength_));
       break;
     case CommandId::ShowPicture:
@@ -232,8 +235,23 @@ void App::handle(const proto::Command& cmd, std::string_view line) {
     case CommandId::HardwareInfo:
       sendHardwareInfo();
       break;
-    case CommandId::MdsPing:
-      transport_.write("MDSPONG\n");
+    case CommandId::MdsPing: {
+      // The uptime lets the daemon notice that the board restarted and resend the core.
+      char reply[40];
+      const int n = snprintf(reply, sizeof(reply), "MDSPONG;up=%lu\n", (unsigned long)millis());
+      if (n > 0) transport_.write(reply, n);
+      handlePresence(presence_.onHeartbeat(millis()));
+      break;
+    }
+    case CommandId::MdsCfg:
+      handleConfig(cmd.args);
+      break;
+    case CommandId::MdsHang:
+#if MDS_TEST_COMMANDS
+      LOGF("MDSHANG: spinning until the watchdog fires");
+      for (;;) {
+      }
+#endif
       break;
     case CommandId::MdsInfo:
       sendInfo();
@@ -264,6 +282,7 @@ void App::setCore(std::string_view name) {
 }
 
 void App::showCore() {
+  screen_ = Screen::Core;
   const std::string_view name(coreName_, coreNameLength_);
   if (assetValid_ && CoreScreen::drawAsset(display_, assetIsPng_ ? CoreScreen::AssetFormat::Png : CoreScreen::AssetFormat::Jpeg,
                                            assetBuffer_, assetLength_)) {
@@ -277,17 +296,104 @@ void App::showCore() {
   CoreScreen::drawWithArtwork(display_, name, pictureFormat_, picture_, length);
 }
 
-void App::showSplash() { SplashScreen::draw(display_, "v" MDS_FW_VERSION); }
+void App::showSplash() {
+  screen_ = Screen::Splash;
+  SplashScreen::draw(display_, "v" MDS_FW_VERSION);
+}
+
+bool App::changesScreen(proto::CommandId id) {
+  using proto::CommandId;
+  switch (id) {
+    case CommandId::CoreName:
+    case CommandId::MdsCore:
+    case CommandId::ShowCoreName:
+    case CommandId::ShowPicture:
+    case CommandId::ClearScreen:
+    case CommandId::ClearWithTransition:
+    case CommandId::DisplayUpdate:
+    case CommandId::StartScreen:
+    case CommandId::TestPicture:
+    case CommandId::Text:
+    case CommandId::Geometry:
+    case CommandId::DisplayOn:
+      return true;
+    default:
+      return false;  // pings, settings, queries and tty2oled startup noise do not wake the screen
+  }
+}
+
+void App::noteActivity() {
+  if (presence_.onActivity(millis()) == presence::Event::Wake) {
+    LOGF("idle sleep: wake");
+    display_.setBacklightOn(true);
+  }
+  if (screen_ == Screen::Waiting || screen_ == Screen::Splash) screen_ = Screen::Other;
+}
+
+void App::handlePresence(presence::Event event) {
+  switch (event) {
+    case presence::Event::HostLost:
+      LOGF("host lost");
+      screen_ = Screen::Waiting;
+      SplashScreen::draw(display_, "v" MDS_FW_VERSION, kWaitingText);
+      break;
+    case presence::Event::SplashWaiting:
+      if (screen_ == Screen::Splash) SplashScreen::draw(display_, "v" MDS_FW_VERSION, kWaitingText);
+      break;
+    case presence::Event::IdleSleep:
+      LOGF("idle sleep");
+      display_.setBacklightOn(false);
+      break;
+    case presence::Event::Wake:
+      display_.setBacklightOn(true);
+      break;
+    case presence::Event::HostBack:  // the daemon resends the core when it reconnects
+    case presence::Event::None:
+      break;
+  }
+}
+
+void App::handleConfig(std::string_view args) {
+  // MDSCFG                -> list
+  // MDSCFG,idle,<minutes> -> idle sleep after <minutes> without a core change (0 = never)
+  // MDSCFG,reset          -> defaults
+  std::string_view f[2];
+  const size_t n = args.empty() ? 0 : proto::splitFields(args, f, 2);
+  int32_t v = 0;
+  if (n == 2 && f[0] == "idle" && proto::parseInt(f[1], v) && v >= 0 && v <= Settings::kMaxIdleMinutes) {
+    settings_.setIdleMinutes(static_cast<uint16_t>(v));
+    presence_.setIdleTimeout(settings_.idleMinutes() * kMsPerMinute);
+  } else if (n == 1 && f[0] == "reset") {
+    settings_.resetToDefaults();
+    presence_.setIdleTimeout(0);
+    display_.setBrightness(Settings::backlightFor(settings_.contrast()));
+    display_.setRotation(cfg::kRotationNormal);
+  } else if (n != 0) {
+    transport_.write("MDSCFG;err=args\n");
+    return;
+  }
+  sendConfig();
+}
+
+void App::sendConfig() {
+  char line[80];
+  const int n = snprintf(line, sizeof(line), "MDSCFG;contrast=%u;rotate=%d;idle=%u\n", settings_.contrast(),
+                         settings_.rotated() ? 1 : 0, settings_.idleMinutes());
+  if (n > 0) transport_.write(line, n);
+}
 
 void App::setContrast(std::string_view args) {
   int32_t contrast = 0;
   if (!proto::parseInt(args, contrast)) return;
-  display_.setBrightness(backlightForContrast(contrast));
+  contrast = contrast < 0 ? 0 : (contrast > 255 ? 255 : contrast);
+  settings_.setContrast(static_cast<uint8_t>(contrast));
+  display_.setBrightness(Settings::backlightFor(settings_.contrast()));
 }
 
 void App::setRotation(std::string_view args) {
   int32_t r = 0;
   proto::parseInt(args, r);  // like toInt(): junk means 0
+  settings_.setRotated(r == 1);
   display_.setRotation(r == 1 ? cfg::kRotationFlipped : cfg::kRotationNormal);
 }
 
@@ -309,15 +415,18 @@ void App::sendHardwareInfo() {
 }
 
 void App::sendInfo() {
-  char line[280];
+  char line[320];
   const int n = snprintf(line, sizeof(line),
                          "MDSINFO;fw=%s;board=T-Display-S3;psram=%u;fb=%s;uptime_ms=%lu;reset=%d;"
-                         "lines=%lu;images=%lu;discards=%lu;txdrop=%lu;txstale=%lu;lastimg=%d:%u;asseterr=%s;core=%s\n",
+                         "lines=%lu;images=%lu;discards=%lu;txdrop=%lu;txstale=%lu;lastimg=%d:%u;asseterr=%s;"
+                         "host=%s;idle=%s;core=%s\n",
                          MDS_FW_VERSION, (unsigned)ESP.getPsramSize(), display_.hasFramebuffer() ? "psram" : "direct",
                          (unsigned long)millis(), (int)esp_reset_reason(), (unsigned long)linesReceived_,
                          (unsigned long)imagesReceived_, (unsigned long)discards_,
                          (unsigned long)transport_.droppedWrites(), (unsigned long)transport_.staleFlushes(),
-                         (int)lastImageResult_, (unsigned)lastImageBytes_, lastAssetError_, coreName_);
+                         (int)lastImageResult_, (unsigned)lastImageBytes_, lastAssetError_,
+                         presence_.heartbeatSeen() ? (presence_.hostLost() ? "lost" : "ok") : "none",
+                         presence_.idleSleeping() ? "sleep" : "awake", coreName_);
   if (n > 0) transport_.write(line, static_cast<size_t>(n) < sizeof(line) ? n : sizeof(line) - 1);
 }
 

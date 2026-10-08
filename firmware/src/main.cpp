@@ -1,6 +1,8 @@
 #include <Arduino.h>
+#include <esp_task_wdt.h>
 
 #include "app/App.h"
+#include "app/Settings.h"
 #include "config.h"
 #include "transport/SerialTransport.h"
 #include "ui/DisplayManager.h"
@@ -8,9 +10,15 @@
 #include "util/Log.h"
 
 namespace {
+
+// Longest expected loop() pass is a 512 KB PNG decode (well under a second); 8 s is far from it.
+constexpr uint32_t kWatchdogSeconds = 8;
+
 DisplayManager display;
 SerialTransport transport;
-App app(display, transport);
+Settings settings;
+App app(display, transport, settings);
+
 }  // namespace
 
 void setup() {
@@ -18,13 +26,19 @@ void setup() {
   LOGF("MiSTerLily %s boot, reset reason %d", MDS_FW_VERSION, (int)esp_reset_reason());
 
   transport.begin();
+  settings.load();
 
   // Without a panel there is nothing to show, but the serial side keeps working.
-  if (display.begin()) {
+  if (display.begin(settings.rotated() ? cfg::kRotationFlipped : cfg::kRotationNormal)) {
     SplashScreen::draw(display, "v" MDS_FW_VERSION);
-    display.setBrightness(cfg::kDefaultBrightness);
+    display.setBrightness(Settings::backlightFor(settings.contrast()));
   }
   app.begin();
+
+  // A stuck loop resets the board; the USB port does not re-enumerate on that reset, and the
+  // daemon notices the restart through the uptime in MDSPONG and resends the core.
+  esp_task_wdt_init(kWatchdogSeconds, true);
+  enableLoopWDT();
 }
 
 void loop() {
