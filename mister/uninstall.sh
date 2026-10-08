@@ -17,6 +17,7 @@ purge=no
 [ "${1:-}" = "--purge" ] && purge=yes
 
 [ -e "$DEST/S60misterlily" ] && bash "$DEST/S60misterlily" stop
+rm -f "$FAT/Scripts/misterlily_update.sh"
 
 if [ -f "$USER_STARTUP" ]; then
   grep -v -F "$DEST/S60misterlily" "$USER_STARTUP" | grep -v -x '# Startup MiSTerLily' >"$USER_STARTUP.mds.tmp" &&

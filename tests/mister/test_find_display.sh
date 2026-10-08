@@ -37,13 +37,13 @@ make_acm 0 2341 0043 "75833353934351F0E1A0" "Arduino Uno"
 out="$(run --quiet)"
 check "other ACM device is ignored" "" "$out"
 
-make_acm 1 303A 1001 "C0:4E:30:0B:D2:84"
+make_acm 1 303A 1001 "12:34:56:78:9A:BC"
 out="$(run --quiet)"; status=$?
 check "ESP32-S3 found (upper-case VID)" "$WORK/dev/ttyACM1" "$out"
 check "found -> exit 0" "0" "$status"
 check "quiet mode prints one line" "1" "$(run --quiet | wc -l | tr -d ' ')"
 check "quiet mode prints nothing on stderr" "" "$(run --quiet 2>&1 >/dev/null)"
-check "--serial" "C0:4E:30:0B:D2:84" "$(run --quiet --serial)"
+check "--serial" "12:34:56:78:9A:BC" "$(run --quiet --serial)"
 
 make_acm 2 303a 1001 "AA:BB:CC:DD:EE:FF"
 check "two ESP32-S3: first one without a pin" "$WORK/dev/ttyACM1" "$(run --quiet)"

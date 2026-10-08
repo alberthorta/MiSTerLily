@@ -190,7 +190,7 @@ Other bench facts:
   (GPIO43/44, `Serial0`) behind a build flag.
 - The device cannot be identified by its USB strings alone (any ESP32-S3/C3 in this mode looks the same:
   303a:1001 "USB JTAG/serial debug unit", manufacturer "Espressif", serial = MAC, e.g.
-  `C0:4E:30:0B:D2:84`). Detection = VID/PID **plus** a `CMDHWINF` handshake expecting `HWTDISPS3`.
+  `12:34:56:78:9A:BC`). Detection = VID/PID **plus** a `CMDHWINF` handshake expecting `HWTDISPS3`.
 
 ### Linux device name
 

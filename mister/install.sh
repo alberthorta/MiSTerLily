@@ -59,12 +59,18 @@ remove_block() {  # file
 # 1. Files
 mkdir -p "$DEST/art"
 if [ "$SRC" != "$DEST" ]; then
-  for f in find-display.sh uninstall.sh install.sh mister_display.py mdsserial.py pictures.py S60misterlily; do
+  for f in find-display.sh uninstall.sh install.sh misterlily_update.sh mister_display.py mdsserial.py pictures.py \
+           S60misterlily; do
     cp -f "$SRC/$f" "$DEST/"
   done
+  # The commit this copy came from, for misterlily_update.sh.
+  [ -e "$SRC/VERSION" ] && cp -f "$SRC/VERSION" "$DEST/VERSION"
   [ -e "$DEST/config.ini" ] || cp -f "$SRC/config.ini" "$DEST/"
 fi
 chmod +x "$DEST"/*.sh "$DEST/S60misterlily" 2>/dev/null || true  # FAT may refuse; bash runs them anyway
+# The updater goes in the MiSTer Scripts menu.
+mkdir -p "$FAT/Scripts"
+cp -f "$DEST/misterlily_update.sh" "$FAT/Scripts/misterlily_update.sh"
 
 # 2. Stop whatever talks to the display now
 [ -x "$DEST/S60misterlily" ] && bash "$DEST/S60misterlily" stop >/dev/null 2>&1

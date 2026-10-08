@@ -19,7 +19,10 @@ program run directly by the system.
 
 `python3 tools/make_mister_installer.py` builds `dist/misterlily_install.sh`, a single script with
 everything inside (daemon, scripts, default config, start-up picture). Copy it to
-`/media/fat/Scripts/` and run it once from the MiSTer Scripts menu. It does steps 1 and 3 below,
+`/media/fat/Scripts/` and run it once from the MiSTer Scripts menu. Then run **`misterlily_update`**
+(also in the Scripts menu now): it downloads the tty2oled logo library and, later, updates
+MiSTerLily from GitHub (github.com/alberthorta/MiSTerLily, branch `main`). That is all you need;
+the tty2oled updater is not required. It does steps 1 and 3 below,
 also before tty2oled is installed: it writes `TTY2OLED_UPDATE="no"` and a `_S60tty2oled` marker,
 so a later tty2oled install (for its logos) never installs a second daemon or flashes the board.
 
@@ -43,7 +46,19 @@ echo 'TTY2OLED_UPDATE="no"' >> /media/fat/tty2oled/tty2oled-user.ini
 The updater only creates `tty2oled-user.ini` when it is missing, so this setting stays.
 If a menu titled "Flash tool for ESP devices" ever appears, choose **Exit**.
 
-## 2. Install tty2oled (for its picture library)
+## Updates and the logo library: `misterlily_update`
+
+`/media/fat/Scripts/misterlily_update.sh` (installed by `install.sh`):
+
+1. compares the installed version (`/media/fat/MiSTerLily/VERSION`) with the latest commit on GitHub
+   and, if it differs, downloads and installs it (`config.ini` and `art/` are kept);
+2. downloads the tty2oled picture archive (about 9 MB) into `/media/fat/tty2oled/pics` when the file
+   on tty2tft.de changed since the last download; nothing else from tty2oled is installed;
+3. restarts the daemon.
+
+## 2. Alternative: install tty2oled (for its picture library)
+
+Not needed when you use `misterlily_update`. If you prefer tty2oled's own updater:
 
 From the MiSTer command line (F9) or SSH:
 

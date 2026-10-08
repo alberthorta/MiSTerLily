@@ -16,8 +16,8 @@ import sys
 import tarfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-MISTER_FILES = ["install.sh", "uninstall.sh", "find-display.sh", "mister_display.py", "mdsserial.py",
-                "pictures.py", "S60misterlily", "config.ini"]
+MISTER_FILES = ["install.sh", "uninstall.sh", "misterlily_update.sh", "find-display.sh", "mister_display.py",
+                "mdsserial.py", "pictures.py", "S60misterlily", "config.ini"]
 OUT = os.path.join(ROOT, "dist", "misterlily_install.sh")
 
 HEADER = r'''#!/bin/bash
@@ -41,8 +41,7 @@ if [ ! -e "$ART/STARTUP.png" ] && [ ! -e "$ART/STARTUP.jpg" ]; then
 fi
 echo
 echo "MiSTerLily is installed and starts at every boot."
-echo "For the tty2oled core logos, run update_tty2oled.sh (see docs/mister-install.md);"
-echo "its daemon stays disabled, MiSTerLily uses its pictures."
+echo "Run misterlily_update from the Scripts menu to get the tty2oled core logos and later updates."
 exit 0
 __PAYLOAD__
 '''
@@ -61,6 +60,11 @@ def main():
             with open(os.path.join(ROOT, "mister", name), "rb") as f:
                 tar.addfile(info, f)
         tar.add(os.path.join(ROOT, "assets", "STARTUP.png"), arcname="STARTUP.png")
+        # The commit it was built from: misterlily_update.sh compares it with GitHub.
+        sha = subprocess.run(["git", "-C", ROOT, "rev-parse", "HEAD"], stdout=subprocess.PIPE).stdout.strip()
+        info = tarfile.TarInfo("mister/VERSION")
+        info.size = len(sha) + 1
+        tar.addfile(info, io.BytesIO(sha + b"\n"))
     payload = base64.encodebytes(buf.getvalue()).decode()
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
     with open(OUT, "w", newline="\n") as f:

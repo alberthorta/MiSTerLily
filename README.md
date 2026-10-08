@@ -80,8 +80,8 @@ python3 tests/fixtures/make_art.py                         # rebuild the colour 
 
 See [docs/mister-install.md](docs/mister-install.md). Quickest: `python3 tools/make_mister_installer.py`,
 copy `dist/misterlily_install.sh` to `/media/fat/Scripts/` (or to the `Scripts` folder of a fresh
-Mr. Fusion card) and run it once from the MiSTer Scripts menu. Then, optionally, install tty2oled
-with its updater for its logo library (its own daemon stays off). Colour pictures go to `/media/fat/MiSTerLily/art/<core>.png`.
+Mr. Fusion card) and run it once from the MiSTer Scripts menu. Then run `misterlily_update` from the
+same menu: it downloads the tty2oled logo library and keeps MiSTerLily up to date from this repository. Colour pictures go to `/media/fat/MiSTerLily/art/<core>.png`.
 
 The daemon can also run on a Mac/Linux PC for testing:
 
