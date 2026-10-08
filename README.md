@@ -3,6 +3,8 @@
 A colour status display for a MiSTer FPGA, built on a LILYGO T-Display-S3 (1.9" 320×170 TFT).
 When MiSTer loads a core, the display shows that system's logo and name.
 
+Website: **https://alberthorta.github.io/MiSTerLily/**
+
 It speaks the serial protocol of [MiSTer_tty2oled](https://github.com/venice1200/MiSTer_tty2oled),
 so the unmodified tty2oled daemon and its picture library drive it over native USB.
 
@@ -146,6 +148,9 @@ Full command list: [docs/protocol.md](docs/protocol.md).
 
 ## Licence and credits
 
-The serial protocol comes from MiSTer_tty2oled by venice1200 and ojaksch (GPL-3.0). This project
-re-implements it; no tty2oled code or pictures are included. The pictures stay on the MiSTer and are
-downloaded by the tty2oled updater.
+GPL-3.0, the same licence as tty2oled. See [LICENSE](LICENSE).
+
+MiSTerLily builds on **[MiSTer_tty2oled](https://github.com/venice1200/MiSTer_tty2oled)** by
+venice1200 and ojaksch: its protocol, its picture library and the idea itself. Thank you. The
+tty2oled pictures are not included in this repository; the MiSTer downloads them from the tty2oled
+server. Full list: [CREDITS.md](CREDITS.md).

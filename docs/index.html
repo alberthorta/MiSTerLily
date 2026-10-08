@@ -1,0 +1,421 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MiSTerLily</title>
+<meta name="description" content="A colour status display for MiSTer FPGA, built on a LILYGO T-Display-S3. Shows the running core, a clock in the menu and your own pictures. Compatible with tty2oled.">
+<meta property="og:title" content="MiSTerLily">
+<meta property="og:description" content="A colour status display for MiSTer FPGA on a LILYGO T-Display-S3.">
+<meta property="og:image" content="img/startup.png">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='8' width='28' height='16' rx='2' fill='%2314181C'/%3E%3Crect x='5' y='11' width='19' height='10' fill='%23FF8C1A'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,300..800&family=Silkscreen&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #E6E9E4;
+    --paper-deep: #DADED8;
+    --ink: #1C2024;
+    --ink-soft: #4A5157;
+    --rule: #7A8288;
+    --mask: #14181C;
+    --signal: #FF8C1A;
+    --signal-ink: #8A4300;
+    --measure: 68ch;
+    color-scheme: light;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "Archivo", system-ui, sans-serif;
+    font-stretch: 100%;
+    font-size: 1.0625rem;
+    line-height: 1.55;
+  }
+  a { color: inherit; text-decoration-thickness: 1px; text-underline-offset: 0.18em; }
+  a:hover { text-decoration-color: var(--signal); }
+  :focus-visible { outline: 2px solid var(--signal); outline-offset: 3px; }
+  code, pre { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 0.9em; }
+
+  .wrap { width: min(1120px, 100% - 2rem); margin-inline: auto; }
+
+  /* Top bar: part number style, like the header strip of a datasheet. */
+  .strip {
+    border-bottom: 1px solid var(--ink);
+    font-stretch: 75%;
+    font-size: 0.875rem;
+  }
+  .strip .wrap { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; padding-block: 0.7rem; }
+  .strip strong { font-stretch: 125%; font-weight: 800; font-size: 1rem; letter-spacing: 0.01em; }
+  .strip nav { display: flex; gap: 1.25rem; flex-wrap: wrap; }
+
+  /* Hero */
+  .hero { padding-block: clamp(2.5rem, 6vw, 5rem) clamp(2rem, 5vw, 4rem); }
+  .hero .wrap { display: grid; grid-template-columns: minmax(0, 6fr) minmax(0, 6fr); gap: clamp(2rem, 5vw, 4.5rem); align-items: center; }
+  h1 {
+    font-stretch: 125%;
+    font-weight: 800;
+    font-size: clamp(2.4rem, 4.6vw, 3.9rem);
+    line-height: 0.95;
+    letter-spacing: -0.02em;
+    margin: 0 0 1.4rem;
+  }
+  .lede { font-size: clamp(1.1rem, 1.6vw, 1.3rem); max-width: 34ch; margin: 0 0 1.8rem; color: var(--ink-soft); }
+  .actions { display: flex; flex-wrap: wrap; gap: 0.75rem; }
+  .button {
+    display: inline-block;
+    padding: 0.7rem 1.15rem;
+    border: 1.5px solid var(--ink);
+    border-radius: 3px;
+    font-weight: 650;
+    text-decoration: none;
+    background: transparent;
+  }
+  .button.primary { background: var(--mask); color: #fff; border-color: var(--mask); }
+  .button.primary:hover { background: #000; }
+  .button:hover { box-shadow: inset 0 -3px 0 var(--signal); }
+
+  /* The board, drawn as a component outline with dimension lines. */
+  figure.board { margin: 0; }
+  .dims { position: relative; padding: 2.4rem 0 0 2.6rem; }
+  .pcb {
+    position: relative;
+    background: var(--mask);
+    border-radius: 14px;
+    padding: 4.5% 15% 4.5% 4.5%;
+    box-shadow: 0 1px 0 rgba(255,255,255,.06) inset, 0 18px 40px -22px rgba(20,24,28,.55);
+  }
+  .pcb::after { /* USB-C socket on the right edge, as mounted */
+    content: "";
+    position: absolute;
+    right: -7px; top: 50%;
+    width: 16px; height: 34%;
+    transform: translateY(-50%);
+    background: linear-gradient(90deg, #8E969C, #C9CED1 45%, #7C8489);
+    border-radius: 4px;
+  }
+  .pcb .buttons { position: absolute; right: 5%; top: 18%; bottom: 18%; display: flex; flex-direction: column; justify-content: space-between; }
+  .pcb .buttons span { width: 14px; height: 14px; border-radius: 50%; background: #2A3036; box-shadow: 0 0 0 3px #1E2328; }
+  .screen {
+    position: relative;
+    display: block;
+    width: 100%;
+    aspect-ratio: 320 / 170;
+    border: 0; padding: 0;
+    background: #000;
+    border-radius: 2px;
+    overflow: hidden;
+    cursor: pointer;
+  }
+  .screen img {
+    display: block; width: 100%; height: 100%;
+    image-rendering: pixelated;
+    transition: filter 120ms linear;
+  }
+  /* The firmware's backlight dip: down 120 ms, new frame, up 180 ms. */
+  .screen.dip img { filter: brightness(0); }
+  .screen.rise img { transition-duration: 180ms; }
+
+  .dim { position: absolute; color: var(--rule); font-stretch: 75%; font-size: 0.8rem; }
+  .dim.w { left: 2.6rem; right: 0; top: 0.4rem; height: 1.2rem; border-left: 1px solid var(--rule); border-right: 1px solid var(--rule); }
+  .dim.w::before { content: ""; position: absolute; left: 0; right: 0; top: 50%; border-top: 1px solid var(--rule); }
+  .dim.w span { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); background: var(--paper); padding: 0 0.5rem; }
+  .dim.h { left: 0.4rem; top: 2.4rem; bottom: 0; width: 1.2rem; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); }
+  .dim.h::before { content: ""; position: absolute; top: 0; bottom: 0; left: 50%; border-left: 1px solid var(--rule); }
+  .dim.h span { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-90deg); background: var(--paper); padding: 0 0.5rem; white-space: nowrap; }
+  figcaption { margin-top: 0.9rem; padding-left: 2.6rem; font-size: 0.9rem; color: var(--ink-soft); }
+  .pixel { font-family: "Silkscreen", monospace; font-size: 0.85em; letter-spacing: 0.02em; }
+
+  /* Sections */
+  section { border-top: 1px solid var(--ink); padding-block: clamp(2.5rem, 6vw, 4.5rem); }
+  .section-grid { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 8fr); gap: clamp(1.5rem, 4vw, 3.5rem); }
+  h2 {
+    font-stretch: 125%;
+    font-weight: 750;
+    font-size: clamp(1.5rem, 2.6vw, 2.1rem);
+    line-height: 1.05;
+    letter-spacing: -0.01em;
+    margin: 0;
+  }
+  h3 { font-weight: 700; font-size: 1.1rem; margin: 0 0 0.35rem; }
+  .prose { max-width: var(--measure); }
+  .prose p { margin: 0 0 1rem; }
+  .prose p:last-child { margin-bottom: 0; }
+
+  /* Screens: real captures from the board, at 1:1 pixel scale or 2x. */
+  .shots { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2.25rem 2rem; margin-top: 2.25rem; }
+  .shot { margin: 0; }
+  .shot img {
+    display: block; width: 100%; height: auto;
+    image-rendering: pixelated;
+    border: 10px solid var(--mask);
+    border-radius: 6px;
+    background: #000;
+  }
+  .shot figcaption { padding: 0; margin-top: 0.6rem; }
+  .shot strong { display: block; color: var(--ink); font-weight: 650; }
+
+  /* Block diagram */
+  .chain { display: flex; align-items: stretch; flex-wrap: wrap; gap: 0; margin-top: 1.75rem; }
+  .node { border: 1.5px solid var(--ink); border-radius: 3px; padding: 0.8rem 1rem; background: var(--paper); min-width: 0; flex: 1 1 11rem; }
+  .node b { display: block; font-stretch: 112%; }
+  .node small { display: block; color: var(--ink-soft); font-size: 0.85rem; line-height: 1.35; margin-top: 0.2rem; }
+  .node.board-node { background: var(--mask); color: #fff; border-color: var(--mask); }
+  .node.board-node small { color: #B9C0C5; }
+  .wire { flex: 0 0 4.25rem; align-self: center; height: 0; border-top: 2px solid var(--ink); position: relative; }
+  .wire span { position: absolute; top: -1.5rem; left: 50%; transform: translateX(-50%); font-size: 0.8rem; font-stretch: 75%; color: var(--ink-soft); white-space: nowrap; }
+
+  /* Install steps: a real sequence */
+  ol.steps { list-style: none; counter-reset: step; padding: 0; margin: 0; display: grid; gap: 1.75rem; }
+  ol.steps li { counter-increment: step; display: grid; grid-template-columns: 3rem minmax(0, 1fr); gap: 1rem; }
+  ol.steps li::before {
+    content: counter(step);
+    font-stretch: 125%; font-weight: 800; font-size: 2rem; line-height: 1;
+    color: var(--ink);
+    border-top: 3px solid var(--signal);
+    padding-top: 0.35rem;
+  }
+  pre {
+    margin: 0.6rem 0 0;
+    padding: 0.8rem 1rem;
+    background: var(--paper-deep);
+    border-left: 3px solid var(--ink);
+    overflow-x: auto;
+    line-height: 1.45;
+  }
+
+  /* Spec table, datasheet style */
+  table.spec { border-collapse: collapse; width: 100%; max-width: 760px; font-size: 0.97rem; }
+  table.spec th, table.spec td { text-align: left; vertical-align: top; padding: 0.55rem 0.75rem 0.55rem 0; border-bottom: 1px solid var(--rule); }
+  table.spec th { font-weight: 650; width: 34%; font-stretch: 87%; }
+  table.spec tr:first-child th, table.spec tr:first-child td { border-top: 1.5px solid var(--ink); }
+
+  .credit { border-left: 3px solid var(--signal); padding-left: 1.1rem; }
+  .credit p { font-size: 1.12rem; }
+
+  footer { border-top: 1px solid var(--ink); padding-block: 1.6rem 2.4rem; font-size: 0.9rem; color: var(--ink-soft); }
+  footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 1rem; }
+
+  @media (max-width: 860px) {
+    .hero .wrap, .section-grid, .shots { grid-template-columns: 1fr; }
+    .lede { max-width: none; }
+    .wire { flex-basis: 100%; height: 1.75rem; border-top: 0; border-left: 2px solid var(--ink); margin-left: 1.25rem; }
+    .wire span { top: 50%; left: 0.75rem; transform: translateY(-50%); }
+    .node { flex-basis: 100%; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .screen img { transition: none; }
+  }
+</style>
+</head>
+<body>
+
+<header class="strip">
+  <div class="wrap">
+    <strong>MiSTerLily</strong>
+    <nav aria-label="Page">
+      <a href="#screens">Screens</a>
+      <a href="#install">Install</a>
+      <a href="#hardware">Hardware</a>
+      <a href="https://github.com/alberthorta/MiSTerLily">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="hero">
+    <div class="wrap">
+      <div>
+        <h1>The core you are playing, on a screen inside the case.</h1>
+        <p class="lede">MiSTerLily turns a LILYGO T-Display-S3 into a colour status display for MiSTer FPGA. Load a core and its logo appears; open the menu and you get a clock.</p>
+        <div class="actions">
+          <a class="button primary" href="https://github.com/alberthorta/MiSTerLily">Get it on GitHub</a>
+          <a class="button" href="#install">Install</a>
+        </div>
+      </div>
+
+      <figure class="board">
+        <div class="dims">
+          <div class="dim w" aria-hidden="true"><span>320 px</span></div>
+          <div class="dim h" aria-hidden="true"><span>170 px, 1.9 in</span></div>
+          <div class="pcb">
+            <button class="screen" type="button" aria-label="Show the next screen">
+              <img id="screen-img" src="img/startup.png" width="320" height="170" alt="Start-up screen: the MiSTer logo with “Waiting for MiSTer” below">
+            </button>
+            <div class="buttons" aria-hidden="true"><span></span><span></span></div>
+          </div>
+        </div>
+        <figcaption>Captured from the board itself. Tap the screen for the next one; it changes with the same backlight dip the firmware uses.</figcaption>
+      </figure>
+    </div>
+  </div>
+
+  <section id="screens">
+    <div class="wrap">
+      <div class="section-grid">
+        <h2>What it shows</h2>
+        <div class="prose">
+          <p>Every core change is a new screen. A colour picture if you made one, otherwise one of the 1,776 core logos from the tty2oled library, otherwise the core’s name in the Commodore 64 font tty2oled has always used.</p>
+        </div>
+      </div>
+      <div class="shots">
+        <figure class="shot">
+          <img src="img/colour.png" width="320" height="170" alt="A full-colour 320 by 170 picture" loading="lazy">
+          <figcaption><strong>Your own pictures</strong>PNG or JPEG, full screen, sent by the MiSTer when the core loads.</figcaption>
+        </figure>
+        <figure class="shot">
+          <img src="img/name.png" width="320" height="170" alt="ATARI 5200 in large pixel letters" loading="lazy">
+          <figcaption><strong>Every core has something</strong>No picture? The system name, with the MiSTer core name below it.</figcaption>
+        </figure>
+        <figure class="shot">
+          <img src="img/menu.png" width="320" height="170" alt="Clock screen: 21:47, Thu 8 Oct 2026, 192.168.1.42" loading="lazy">
+          <figcaption><strong>The menu</strong>Time, date and the MiSTer’s network address.</figcaption>
+        </figure>
+        <figure class="shot">
+          <img src="img/startup.png" width="320" height="170" alt="MiSTer logo with Waiting for MiSTer" loading="lazy">
+          <figcaption><strong>Start-up</strong>Your own picture, stored on the board. If the MiSTer stops answering, it says so.</figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <section id="how">
+    <div class="wrap">
+      <div class="section-grid">
+        <h2>How it connects</h2>
+        <div class="prose">
+          <p>One USB cable carries power and data. A small program on the MiSTer watches for core changes and sends the right picture; the board draws it. Nothing in the FPGA cores changes, and no Wi-Fi is involved.</p>
+        </div>
+      </div>
+      <div class="chain" role="list" aria-label="Connection">
+        <div class="node" role="listitem"><b>MiSTer</b><small>Linux side writes the core name to /tmp/CORENAME</small></div>
+        <div class="wire" aria-hidden="true"><span>daemon</span></div>
+        <div class="node" role="listitem"><b>Pictures</b><small>your art/ folder, then the tty2oled library</small></div>
+        <div class="wire" aria-hidden="true"><span>USB</span></div>
+        <div class="node" role="listitem"><b>USB hub</b><small>inside the case, next to the Wi-Fi dongle</small></div>
+        <div class="wire" aria-hidden="true"><span>USB-C</span></div>
+        <div class="node board-node" role="listitem"><b>T-Display-S3</b><small>appears as /dev/ttyACM0, no driver</small></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="tty2oled">
+    <div class="wrap">
+      <div class="section-grid">
+        <h2>Built on tty2oled</h2>
+        <div class="prose credit">
+          <p>MiSTerLily would not exist without <a href="https://github.com/venice1200/MiSTer_tty2oled">MiSTer_tty2oled</a> by venice1200 and ojaksch. The serial protocol, the picture library and the idea of a small display that follows your core all come from there.</p>
+          <p>The board speaks the tty2oled protocol, so the original tty2oled daemon drives it as it is, in grey. The MiSTerLily daemon adds colour pictures, the clock and automatic reconnection, and still uses the tty2oled pictures. Same licence too: GPL-3.0.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="install">
+    <div class="wrap">
+      <div class="section-grid">
+        <h2>Install</h2>
+        <ol class="steps">
+          <li>
+            <div>
+              <h3>Flash the board</h3>
+              <p class="prose">From a computer with <a href="https://platformio.org/">PlatformIO</a>, over the board’s USB-C port. No buttons needed.</p>
+<pre><code>git clone https://github.com/alberthorta/MiSTerLily
+cd MiSTerLily/firmware
+pio run -t upload</code></pre>
+            </div>
+          </li>
+          <li>
+            <div>
+              <h3>Install on the MiSTer</h3>
+              <p class="prose">Build the one-file installer, copy it to <code>/media/fat/Scripts</code> (or to the <code>Scripts</code> folder of a fresh Mr. Fusion card) and run <span class="pixel">misterlily_install</span> once from the Scripts menu.</p>
+<pre><code>python3 tools/make_mister_installer.py
+# then copy dist/misterlily_install.sh to the MiSTer</code></pre>
+            </div>
+          </li>
+          <li>
+            <div>
+              <h3>Get the logos</h3>
+              <p class="prose">Run <span class="pixel">misterlily_update</span> from the same menu. It downloads the tty2oled logo library and, whenever you run it again, updates MiSTerLily from GitHub.</p>
+            </div>
+          </li>
+        </ol>
+      </div>
+    </div>
+  </section>
+
+  <section id="pictures">
+    <div class="wrap">
+      <div class="section-grid">
+        <h2>Your own pictures</h2>
+        <div class="prose">
+          <p>Put a PNG or JPEG named after the core in <code>/media/fat/MiSTerLily/art</code>: <code>PSX.png</code>, <code>SNES.png</code>, <code>Genesis.png</code>. It wins over the library logo from the next core change on. The name is the one MiSTer writes to <code>/tmp/CORENAME</code>.</p>
+          <p><code>MENU.png</code> replaces the clock, and <code>STARTUP.png</code> becomes the start-up picture. A converter fits any image to the screen:</p>
+<pre><code>python3 tools/convert_asset.py photo.jpg art/SNES.png</code></pre>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="hardware">
+    <div class="wrap">
+      <div class="section-grid">
+        <h2>Hardware</h2>
+        <table class="spec">
+          <tr><th scope="row">Board</th><td>LILYGO T-Display-S3 (touch or non-touch), not the AMOLED version</td></tr>
+          <tr><th scope="row">Chip</th><td>ESP32-S3R8, 16 MB flash, 8 MB PSRAM</td></tr>
+          <tr><th scope="row">Display</th><td>1.9″ ST7789 IPS, 320 × 170, 16-bit colour, 8-bit parallel bus</td></tr>
+          <tr><th scope="row">Connection</th><td>USB-C to any MiSTer USB port or internal hub; USB CDC, <code>303a:1001</code></td></tr>
+          <tr><th scope="row">MiSTer side</th><td>Python 3 daemon, tested on Linux; tty2oled’s own daemon also works</td></tr>
+          <tr><th scope="row">Licence</th><td>GPL-3.0</td></tr>
+        </table>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>MiSTerLily, GPL-3.0. Built on <a href="https://github.com/venice1200/MiSTer_tty2oled">tty2oled</a> by venice1200 and ojaksch. <a href="https://github.com/alberthorta/MiSTerLily/blob/main/CREDITS.md">All credits</a>.</span>
+    <a href="https://github.com/alberthorta/MiSTerLily">github.com/alberthorta/MiSTerLily</a>
+  </div>
+</footer>
+
+<script>
+  (function () {
+    var screens = [
+      ["img/startup.png", "Start-up screen: the MiSTer logo with “Waiting for MiSTer” below"],
+      ["img/colour.png", "A full-colour picture"],
+      ["img/name2.png", "SUPER NINTENDO in large pixel letters"],
+      ["img/menu.png", "Clock screen in the MiSTer menu"],
+      ["img/name.png", "ATARI 5200 in large pixel letters"]
+    ];
+    var button = document.querySelector(".screen");
+    var img = document.getElementById("screen-img");
+    var reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    var i = 0, timer = null;
+    screens.forEach(function (s) { var p = new Image(); p.src = s[0]; });
+
+    function next() {
+      i = (i + 1) % screens.length;
+      if (reduce) { img.src = screens[i][0]; img.alt = screens[i][1]; return; }
+      button.classList.add("dip");
+      setTimeout(function () {
+        img.src = screens[i][0];
+        img.alt = screens[i][1];
+        button.classList.remove("dip");
+        button.classList.add("rise");
+        setTimeout(function () { button.classList.remove("rise"); }, 200);
+      }, 130);
+    }
+    function schedule() { if (!reduce) { clearInterval(timer); timer = setInterval(next, 3600); } }
+    button.addEventListener("click", function () { next(); schedule(); });
+    schedule();
+  })();
+</script>
+</body>
+</html>
