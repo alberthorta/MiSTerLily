@@ -78,8 +78,9 @@ echo SNES > /tmp/CORENAME                         # shows SNES now
 cat /tmp/mister-display.log                       # what was sent, connections, picture errors
 ```
 
-Settings are in `/media/fat/MiSTerLily/config.ini` (brightness, rotation, idle sleep, picture
-folders, a fixed `TTYDEV`); restart with `S60misterlily restart` after a change.
+Settings are in `/media/fat/MiSTerLily/config.ini`: brightness, rotation, fade, idle sleep (dark or a
+dim clock), the menu screen (clock with time/date/IP, or the tty2oled MENU logo), picture folders, a
+fixed `TTYDEV`. Restart with `S60misterlily restart` after a change.
 
 The daemon pings the display every 5 s. If the display restarts (watchdog), it sends the core again;
 if it stops answering, the daemon opens the port again. If the daemon stops (or MiSTer shuts down

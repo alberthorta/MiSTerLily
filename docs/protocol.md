@@ -57,7 +57,8 @@ The host should set the port raw (`stty ... raw -echo -hupcl`), like tty2oled do
 | `CMDTEST` | Colour bars, 16 greys, 1 px red frame |
 | `CMDHWINF` | `HWTDISPS3;MDS-<version>;\n` |
 | `CMDRESET` | Restart after 100 ms (the USB port stays; no re-enumeration) |
-| `QWERTZ` (also with leading noise), `CMDNULL`, `CMDSETTIME`, `CMDSAVER`, `CMDSWSAVER`, `CMDSECD`, `CMDSHCD`, `CMDSHTIME`, `CMDSSCP`, `CMDBYE`, `bye` | Accepted, nothing visible yet |
+| `CMDSETTIME,<epoch>` | Sets the clock (tty2oled sends local time as an epoch). Used by the menu and idle clock screens |
+| `QWERTZ` (also with leading noise), `CMDNULL`, `CMDSAVER`, `CMDSWSAVER`, `CMDSECD`, `CMDSHCD`, `CMDSHTIME`, `CMDSSCP`, `CMDBYE`, `bye` | Accepted, nothing visible yet |
 | any other `CMD...` | Ignored (the sketch would draw it as a core name) |
 
 `HWTDISPS3` is 9 characters, as `installer.sh` expects (`${BLA:0:9}`), and unknown to its flasher.
@@ -90,9 +91,12 @@ MDSIMG,<bytes>,<crc32>,<png|jpg>,<core>\n
 | Command | Reply |
 |---|---|
 | `MDSPING` | `MDSPONG;up=<uptime ms>\n`. Our daemon sends it every 5 s: a lower uptime means the board restarted (resend everything); once pings were seen, 15 s without one shows "Waiting for MiSTer". Pings do not wake an idle-sleeping screen |
-| `MDSCFG` | `MDSCFG;contrast=<0..255>;rotate=<0\|1>;idle=<minutes>\n` (settings stored in flash) |
+| `MDSCFG` | `MDSCFG;contrast=<0..255>;rotate=<0\|1>;idle=<minutes>;fade=<0\|1>;idleclock=<0\|1>\n` (settings stored in flash) |
 | `MDSCFG,idle,<minutes>` | Backlight off after `<minutes>` without a core change or display command (0 = never, the default; max 1440); replies like `MDSCFG` |
-| `MDSCFG,reset` | Default settings (brightness 255, no rotation, no idle sleep) |
+| `MDSCFG,fade,<0\|1>` | Short backlight dip on core changes (default 1). `CMDCOR,<core>,0` skips it for one change |
+| `MDSCFG,idleclock,<0\|1>` | When idle: a dim clock instead of a dark screen (default 0; needs the time) |
+| `MDSCFG,reset` | Default settings (brightness 255, no rotation, no idle sleep, fade on, no idle clock) |
+| `MDSNET,<ip>` | The MiSTer's IP address, shown on the menu clock screen (empty = none) |
 | `MDSINFO` | `MDSINFO;fw=..;board=T-Display-S3;psram=..;fb=psram;uptime_ms=..;reset=..;lines=..;images=..;discards=..;txdrop=..;txstale=..;lastimg=<result>:<bytes>;core=..\n` |
 | `MDSCORE,<core>` | Show the core name (no picture transfer) |
 | `MDSSHOT` | `MDSSHOT,<w>,<h>,<bytes>\n`, then `ttyack;`, then the frame buffer (RGB565 big-endian, row-major). `tools/screenshot.py` saves it as PNG |
@@ -114,3 +118,7 @@ MDSIMG,<bytes>,<crc32>,<png|jpg>,<core>\n
 - **Idle sleep**: off by default (an LCD has no burn-in). `CMDDOFF`/`CMDDON` stay independent: a core
   change wakes an idle sleep, but not a `CMDDOFF`.
 - **Start screen**: after 10 s without any data it adds "Waiting for MiSTer".
+- **Menu screen**: a core named `MENU` without a picture shows time, date and the IP from `MDSNET`
+  (once the time is known), redrawn every minute.
+- **Fade**: the backlight goes down (120 ms), the new frame is pushed, and it comes back (180 ms).
+  The main loop keeps running during the fade.

@@ -9,6 +9,7 @@
 #include "config.h"
 #include "ui/CoreScreen.h"
 #include "ui/LegacyCanvas.h"
+#include "ui/MenuScreen.h"
 #include "ui/SplashScreen.h"
 #include "ui/Theme.h"
 #include "util/Log.h"
@@ -53,6 +54,11 @@ void App::loop() {
   }
   parser_.poll(millis());
   handlePresence(presence_.update(millis()));
+  display_.tick(millis());
+  if ((screen_ == Screen::Menu || screen_ == Screen::IdleClock) && clock_.valid() &&
+      clock_.minuteStamp(millis()) != shownMinute_) {
+    showMenu(screen_ == Screen::IdleClock);
+  }
   pumpScreenshot(millis());
   transport_.poll(millis());
 
@@ -83,6 +89,7 @@ void App::onImage(const proto::ImageFrame& frame) {
   const std::string_view command(frame.commandLine);
   const proto::CoreCommand cc = proto::parseCoreCommand(command);
   setCore(cc.core);
+  nextCoreFades_ = cc.transition != 0;
   assetValid_ = false;
   if (frame.result == proto::ImageResult::Ok) {
     memcpy(picture_, frame.data, frame.length);
@@ -92,7 +99,7 @@ void App::onImage(const proto::ImageFrame& frame) {
     pictureFormat_ = proto::ImageFormat::None;
   }
   // CMDAPD only loads the picture; CMDSPIC shows it later.
-  if (command.substr(0, 6) == "CMDCOR") showCore();
+  if (command.substr(0, 6) == "CMDCOR") showCore(true);
   ack();
 }
 
@@ -119,7 +126,7 @@ void App::onAsset(const proto::AssetFrame& frame) {
     snprintf(reply, sizeof(reply), "MDSIMG;err=%s\n", lastAssetError_);
     transport_.write(reply);
     // Still a core change: show the name rather than the previous core's picture.
-    showCore();
+    showCore(true);
   }
   LOGF("asset '%s' result %d error %s", frame.commandLine, (int)frame.result, lastAssetError_);
   ack();
@@ -150,11 +157,15 @@ bool App::decodeAsset(std::string_view header, const proto::AssetFrame& frame, c
     *error = "format";
     return false;
   }
-  if (!CoreScreen::drawAsset(display_, png ? CoreScreen::AssetFormat::Png : CoreScreen::AssetFormat::Jpeg,
-                             frame.data, frame.length)) {
+  if (settings_.fade()) display_.armFade(millis());
+  const bool ok = CoreScreen::drawAsset(display_, png ? CoreScreen::AssetFormat::Png : CoreScreen::AssetFormat::Jpeg,
+                                        frame.data, frame.length);
+  display_.disarmFade();
+  if (!ok) {
     *error = "decode";
     return false;
   }
+  screen_ = Screen::Core;
   assetValid_ = true;
   assetIsPng_ = png;
   assetLength_ = frame.length;
@@ -175,7 +186,7 @@ void App::handle(const proto::Command& cmd, std::string_view line) {
       setCore(cmd.args);
       pictureFormat_ = proto::ImageFormat::None;
       assetValid_ = false;
-      showCore();
+      showCore(true);
       break;
     case CommandId::ShowCoreName:
       screen_ = Screen::Core;
@@ -246,6 +257,16 @@ void App::handle(const proto::Command& cmd, std::string_view line) {
     case CommandId::MdsCfg:
       handleConfig(cmd.args);
       break;
+    case CommandId::MdsNet: {
+      const size_t n = cmd.args.size() < sizeof(ip_) - 1 ? cmd.args.size() : sizeof(ip_) - 1;
+      memcpy(ip_, cmd.args.data(), n);
+      ip_[n] = '\0';
+      if (screen_ == Screen::Menu) showMenu(false);
+      break;
+    }
+    case CommandId::SetTime:
+      setTime(cmd.args);
+      break;
     case CommandId::MdsHang:
 #if MDS_TEST_COMMANDS
       LOGF("MDSHANG: spinning until the watchdog fires");
@@ -270,7 +291,7 @@ void App::handle(const proto::Command& cmd, std::string_view line) {
       break;
 
     default:
-      // Accepted and ignored: QWERTZ, CMDNULL, CMDSETTIME, CMDSAVER, CMDSWSAVER, CMDSECD, unknown CMD*.
+      // Accepted and ignored: QWERTZ, CMDNULL, CMDSAVER, CMDSWSAVER, CMDSECD, unknown CMD*.
       break;
   }
 }
@@ -281,9 +302,21 @@ void App::setCore(std::string_view name) {
   coreName_[coreNameLength_] = '\0';
 }
 
-void App::showCore() {
+void App::showCore(bool fade) {
+  if (fade && nextCoreFades_ && settings_.fade()) display_.armFade(millis());
+  nextCoreFades_ = true;
   screen_ = Screen::Core;
   const std::string_view name(coreName_, coreNameLength_);
+  // The menu gets the clock screen unless a picture for it arrived (art/MENU.png, MENU.gsc).
+  if (!assetValid_ && pictureFormat_ == proto::ImageFormat::None && name == "MENU" && clock_.valid()) {
+    showMenu(false);
+    display_.disarmFade();
+    return;
+  }
+  struct Disarm {
+    DisplayManager& d;
+    ~Disarm() { d.disarmFade(); }
+  } disarm{display_};
   if (assetValid_ && CoreScreen::drawAsset(display_, assetIsPng_ ? CoreScreen::AssetFormat::Png : CoreScreen::AssetFormat::Jpeg,
                                            assetBuffer_, assetLength_)) {
     return;
@@ -299,6 +332,24 @@ void App::showCore() {
 void App::showSplash() {
   screen_ = Screen::Splash;
   SplashScreen::draw(display_, "v" MDS_FW_VERSION);
+}
+
+void App::showMenu(bool dimmed) {
+  screen_ = dimmed ? Screen::IdleClock : Screen::Menu;
+  shownMinute_ = clock_.minuteStamp(millis());
+  MenuScreen::draw(display_, clock_.local(millis()), ip_, dimmed);
+}
+
+void App::setTime(std::string_view args) {
+  // Epoch seconds (10 digits today): too long for parseInt.
+  int64_t v = 0;
+  if (args.empty() || args.size() > 12) return;
+  for (char c : args) {
+    if (c < '0' || c > '9') return;
+    v = v * 10 + (c - '0');
+  }
+  clock_.set(v, millis());
+  if (screen_ == Screen::Menu || screen_ == Screen::IdleClock) showMenu(screen_ == Screen::IdleClock);
 }
 
 bool App::changesScreen(proto::CommandId id) {
@@ -326,6 +377,8 @@ void App::noteActivity() {
   if (presence_.onActivity(millis()) == presence::Event::Wake) {
     LOGF("idle sleep: wake");
     display_.setBacklightOn(true);
+    // The idle clock replaced the core screen; whatever comes next draws over it anyway.
+    if (screen_ == Screen::IdleClock) screen_ = Screen::Other;
   }
   if (screen_ == Screen::Waiting || screen_ == Screen::Splash) screen_ = Screen::Other;
 }
@@ -342,7 +395,11 @@ void App::handlePresence(presence::Event event) {
       break;
     case presence::Event::IdleSleep:
       LOGF("idle sleep");
-      display_.setBacklightOn(false);
+      if (settings_.idleClock() && clock_.valid()) {
+        showMenu(true);  // a dim clock instead of a dark screen
+      } else {
+        display_.setBacklightOn(false);
+      }
       break;
     case presence::Event::Wake:
       display_.setBacklightOn(true);
@@ -356,6 +413,8 @@ void App::handlePresence(presence::Event event) {
 void App::handleConfig(std::string_view args) {
   // MDSCFG                -> list
   // MDSCFG,idle,<minutes> -> idle sleep after <minutes> without a core change (0 = never)
+  // MDSCFG,fade,<0|1>     -> backlight dip on core changes
+  // MDSCFG,idleclock,<0|1> -> when idle, a dim clock instead of backlight off
   // MDSCFG,reset          -> defaults
   std::string_view f[2];
   const size_t n = args.empty() ? 0 : proto::splitFields(args, f, 2);
@@ -363,6 +422,10 @@ void App::handleConfig(std::string_view args) {
   if (n == 2 && f[0] == "idle" && proto::parseInt(f[1], v) && v >= 0 && v <= Settings::kMaxIdleMinutes) {
     settings_.setIdleMinutes(static_cast<uint16_t>(v));
     presence_.setIdleTimeout(settings_.idleMinutes() * kMsPerMinute);
+  } else if (n == 2 && f[0] == "fade" && proto::parseInt(f[1], v) && (v == 0 || v == 1)) {
+    settings_.setFade(v == 1);
+  } else if (n == 2 && f[0] == "idleclock" && proto::parseInt(f[1], v) && (v == 0 || v == 1)) {
+    settings_.setIdleClock(v == 1);
   } else if (n == 1 && f[0] == "reset") {
     settings_.resetToDefaults();
     presence_.setIdleTimeout(0);
@@ -377,8 +440,9 @@ void App::handleConfig(std::string_view args) {
 
 void App::sendConfig() {
   char line[80];
-  const int n = snprintf(line, sizeof(line), "MDSCFG;contrast=%u;rotate=%d;idle=%u\n", settings_.contrast(),
-                         settings_.rotated() ? 1 : 0, settings_.idleMinutes());
+  const int n = snprintf(line, sizeof(line), "MDSCFG;contrast=%u;rotate=%d;idle=%u;fade=%d;idleclock=%d\n",
+                         settings_.contrast(), settings_.rotated() ? 1 : 0, settings_.idleMinutes(),
+                         settings_.fade() ? 1 : 0, settings_.idleClock() ? 1 : 0);
   if (n > 0) transport_.write(line, n);
 }
 

@@ -6,10 +6,10 @@ When MiSTer loads a core, the display shows that system's logo and name.
 It speaks the serial protocol of [MiSTer_tty2oled](https://github.com/venice1200/MiSTer_tty2oled),
 so the unmodified tty2oled daemon and its picture library drive it over native USB.
 
-Status: **Phase 6** (polish) in progress — colour pictures, our own MiSTer daemon with heartbeat and
-reconnection, watchdog, stored settings, idle sleep and a "Waiting for MiSTer" screen work on the
-bench (board on a Mac, scripts in Linux containers). tty2oled compatibility mode works too.
-Not yet tested on a real MiSTer.
+Status: **Phase 6** done — colour pictures, our own MiSTer daemon with heartbeat and reconnection,
+watchdog, stored settings, fades, a menu clock screen, idle sleep and a "Waiting for MiSTer" screen
+work on the bench (board on a Mac, scripts in Linux containers). tty2oled compatibility mode works
+too. Not yet tested on a real MiSTer.
 
 ## Hardware
 
@@ -110,8 +110,11 @@ The panel shows 16-bit colour; `--dither` avoids bands in smooth gradients.
 - Common systems get a friendly name (`PSX` → PLAYSTATION) with the MiSTer core name small below.
 - Start-up: "MiSTer / T-Display-S3" and the firmware version; "Waiting for MiSTer" if nothing
   arrives within 10 s, or when our daemon stops answering for 15 s.
-- Brightness and rotation are remembered across power cycles. Optional idle sleep
-  (`IDLE_MINUTES` in the daemon config, or `MDSCFG,idle,<minutes>`).
+- The MiSTer menu (native mode): a clock screen with time, date and the MiSTer's IP address, unless
+  you put an `art/MENU.png`.
+- A short backlight dip when the core changes (can be turned off).
+- Brightness, rotation and the options below are remembered across power cycles. Optional idle
+  sleep, dark or with a dim clock (`IDLE_MINUTES` / `IDLE_SCREEN` in the daemon config).
 
 ## tty2oled compatibility
 

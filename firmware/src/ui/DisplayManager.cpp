@@ -5,6 +5,14 @@
 #include "config.h"
 #include "util/Log.h"
 
+namespace {
+
+// Short enough that a core change still feels immediate, long enough to read as a fade.
+constexpr uint32_t kFadeOutMs = 120;
+constexpr uint32_t kFadeInMs = 180;
+
+}  // namespace
+
 bool DisplayManager::begin(uint8_t rotation) {
   pinMode(cfg::pin::kPowerOn, OUTPUT);
   digitalWrite(cfg::pin::kPowerOn, HIGH);
@@ -33,17 +41,82 @@ lgfx::LovyanGFX& DisplayManager::canvas() {
 }
 
 void DisplayManager::present() {
-  // While asleep the frame stays in the buffer; wake() pushes it.
+  if (fadeArmed_) {
+    fadeArmed_ = false;
+    presentFaded(fadeArmedMs_);
+    return;
+  }
+  // While asleep the frame stays in the buffer; wake() pushes it. A plain present() cancels a
+  // fade (the newest frame wins, shown at once).
+  if (fade_ != Fade::None) finishFade();
   if (framebufferOk_ && awake_) frame_.pushSprite(0, 0);
+}
+
+void DisplayManager::presentFaded(uint32_t nowMs) {
+  if (!framebufferOk_ || !awake_ || !backlightOn_) {
+    finishFade();
+    if (framebufferOk_ && awake_) frame_.pushSprite(0, 0);
+    return;
+  }
+  switch (fade_) {
+    case Fade::None:
+      fade_ = Fade::Out;
+      fadeStartMs_ = nowMs;
+      fadeFrom_ = brightness_;
+      level_ = brightness_;
+      break;
+    case Fade::Out:
+      break;  // the new frame is already in the buffer; it is pushed at the bottom of the dip
+    case Fade::In:
+      // A new frame while coming back up: go down again from where we are.
+      fade_ = Fade::Out;
+      fadeStartMs_ = nowMs;
+      fadeFrom_ = level_;
+      break;
+  }
+}
+
+void DisplayManager::tick(uint32_t nowMs) {
+  if (fade_ == Fade::None) return;
+  const uint32_t t = nowMs - fadeStartMs_;
+  if (fade_ == Fade::Out) {
+    if (t >= kFadeOutMs) {
+      level_ = 0;
+      lcd_.setBrightness(0);
+      frame_.pushSprite(0, 0);
+      fade_ = Fade::In;
+      fadeStartMs_ = nowMs;
+      return;
+    }
+    level_ = static_cast<uint8_t>(fadeFrom_ - fadeFrom_ * t / kFadeOutMs);
+  } else {
+    if (t >= kFadeInMs) {
+      fade_ = Fade::None;
+      lcd_.setBrightness(brightness_);
+      return;
+    }
+    level_ = static_cast<uint8_t>(brightness_ * t / kFadeInMs);
+  }
+  lcd_.setBrightness(level_);
+}
+
+// Ends a fade at once: the pending frame is shown and the light restored (if it should be on).
+void DisplayManager::finishFade() {
+  if (fade_ == Fade::None) return;
+  if (fade_ == Fade::Out && framebufferOk_ && awake_) frame_.pushSprite(0, 0);
+  fade_ = Fade::None;
+  if (awake_) lcd_.setBrightness(backlightOn_ ? brightness_ : 0);
 }
 
 void DisplayManager::setBrightness(uint8_t level) {
   brightness_ = level;
-  if (awake_ && backlightOn_) lcd_.setBrightness(level);
+  // During a fade tick() owns the backlight and ends at brightness_.
+  if (awake_ && backlightOn_ && fade_ == Fade::None) lcd_.setBrightness(level);
 }
 
 void DisplayManager::setBacklightOn(bool on) {
   backlightOn_ = on;
+  finishFade();
   if (awake_) lcd_.setBrightness(on ? brightness_ : 0);
 }
 
@@ -54,6 +127,7 @@ void DisplayManager::setRotation(uint8_t rotation) {
 
 void DisplayManager::sleep() {
   if (!awake_) return;
+  finishFade();
   awake_ = false;
   lcd_.setBrightness(0);
   lcd_.sleep();

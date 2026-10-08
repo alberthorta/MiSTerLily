@@ -19,6 +19,8 @@ Usage (normally started by S60misterlily):
 """
 import argparse
 import os
+import signal
+import socket
 import subprocess
 import sys
 import termios
@@ -41,6 +43,9 @@ DEFAULTS = {
     "CONTRAST": "255",
     "ROTATE": "no",
     "IDLE_MINUTES": "",  # backlight off after this many minutes without a core change; "" = keep the board's
+    "IDLE_SCREEN": "",  # what idle shows: "off" (dark) or "clock" (dim clock); "" = keep the board's
+    "FADE": "",  # backlight dip on core changes: "yes"/"no"; "" = keep the board's (default yes)
+    "MENU_SCREEN": "clock",  # MiSTer menu: "clock" (built-in clock screen) or "picture" (tty2oled MENU logo)
 }
 SLEEP_FILE = "/tmp/tty2oled_sleep"
 POLL_SECONDS = 0.1
@@ -48,6 +53,9 @@ RETRY_SECONDS = 2.0
 PING_SECONDS = 5.0
 # No answer for this long: give up on the port and look for the display again.
 PONG_TIMEOUT_SECONDS = 15.0
+# The board's clock drifts with its crystal; refresh it now and then. Also how often the IP is checked.
+TIME_RESEND_SECONDS = 600.0
+IP_CHECK_SECONDS = 30.0
 # A device node must exist this long before we open it: the kernel creates /dev/ttyACMn a moment
 # before the port is usable.
 SETTLE_SECONDS = 0.5
@@ -94,6 +102,19 @@ def find_device(cfg):
     return dev or None
 
 
+def local_ip():
+    """The address of the interface that would reach the internet; "" without a network.
+    connect() on a UDP socket sends nothing, it only picks the route."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("192.0.2.1", 9))  # TEST-NET-1, never actually contacted
+        return s.getsockname()[0]
+    except OSError:
+        return ""
+    finally:
+        s.close()
+
+
 def read_core(path):
     try:
         with open(path, "rb") as f:
@@ -122,6 +143,9 @@ class Display:
         self.pending = b""
         self.restarted = False  # set when a pong shows a lower uptime than before
         self.pending = b""  # a reply line split across reads
+        self.next_time = 0.0
+        self.next_ip_check = 0.0
+        self.ip = None
 
     def connected(self):
         return self.port is not None
@@ -141,11 +165,26 @@ class Display:
         self.port.write("CMDROT,{}\n".format(1 if self.cfg["ROTATE"] == "yes" else 0))
         if self.cfg["IDLE_MINUTES"].isdigit():
             self.port.write("MDSCFG,idle,{}\n".format(int(self.cfg["IDLE_MINUTES"])))
-        # Local wall time as epoch seconds, the tty2oled convention (for a future clock screen).
-        self.port.write("CMDSETTIME,{}\n".format(int(time.time() + time.localtime().tm_gmtoff)))
+        if self.cfg["IDLE_SCREEN"] in ("off", "clock"):
+            self.port.write("MDSCFG,idleclock,{}\n".format(1 if self.cfg["IDLE_SCREEN"] == "clock" else 0))
+        if self.cfg["FADE"] in ("yes", "no"):
+            self.port.write("MDSCFG,fade,{}\n".format(1 if self.cfg["FADE"] == "yes" else 0))
+        self.send_time()
+        self.ip = None
+        self.next_ip_check = 0.0
         self.last_pong = time.monotonic()
         self.next_ping = 0.0
         self.uptime = None
+
+    def release(self):
+        """Leaves the display as tty2oled expects it (acks on), e.g. before switching modes."""
+        if self.port:
+            try:
+                self.port.write("CMDSTTYACK,1\n")
+                self.port.close()
+            except (OSError, termios.error):
+                pass
+            self.port = None
 
     def disconnect(self, why):
         if self.port:
@@ -159,6 +198,22 @@ class Display:
 
     def still_there(self):
         return self.port is not None and os.path.exists(self.path)
+
+    def send_time(self):
+        # Local wall time as epoch seconds, the tty2oled convention (CMDSETTIME).
+        self.port.write("CMDSETTIME,{}\n".format(int(time.time() + time.localtime().tm_gmtoff)))
+        self.next_time = time.monotonic() + TIME_RESEND_SECONDS
+
+    def housekeeping(self, now):
+        if now >= self.next_time:
+            self.send_time()
+        if now >= self.next_ip_check:
+            self.next_ip_check = now + IP_CHECK_SECONDS
+            ip = local_ip()
+            if ip != self.ip:
+                self.ip = ip
+                self.port.write("MDSNET,{}\n".format(ip))
+                debug("ip {}".format(ip or "none"))
 
     def heartbeat(self, now):
         """Pings the display; raises OSError if it stopped answering."""
@@ -194,6 +249,11 @@ class Display:
             self.port.write(head + data)
             log("{} -> colour picture {} ({} bytes)".format(core, os.path.basename(art), len(data)))
             return
+        if core == "MENU" and cfg["MENU_SCREEN"] == "clock":
+            # The display draws its clock screen for MENU when no picture comes with it.
+            self.port.write("MDSCORE,MENU\n")
+            log("MENU -> clock screen")
+            return
         if cfg["USE_TTY2OLED_PICS"] == "yes":
             pic = find_picture(cfg["TTY2OLED_PICS"], core, cfg["USE_US_PICTURE"] == "yes",
                                cfg["USE_GSC_PICTURE"] == "yes", cfg["USE_TEXT_PICTURE"] == "yes")
@@ -207,11 +267,8 @@ class Display:
         log("{} -> name only".format(core))
 
 
-def run(args):
-    cfg = read_config(args.config)
-    if args.device:
-        cfg["TTYDEV"] = args.device
-    display = Display(cfg)
+def run(args, display):
+    cfg = display.cfg
     last_stamp = None
     shown = None  # core currently on the display
     next_search = 0.0
@@ -240,6 +297,7 @@ def run(args):
                 raise OSError("device node gone")
             display.drain()
             display.heartbeat(time.monotonic())
+            display.housekeeping(time.monotonic())
             if display.restarted:
                 # The board lost its settings and picture: set it up again and resend.
                 display.restarted = False
@@ -276,9 +334,16 @@ def main():
     ap.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args()
     verbose = args.verbose
+    cfg = read_config(args.config)
+    if args.device:
+        cfg["TTYDEV"] = args.device
+    display = Display(cfg)
+    # S60misterlily stop sends SIGTERM: leave the display in tty2oled's default state.
+    signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt()))
     try:
-        run(args)
+        run(args, display)
     except KeyboardInterrupt:
+        display.release()
         log("stopped")
     return 0
 

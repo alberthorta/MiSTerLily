@@ -7,6 +7,7 @@
 #include "Command.h"
 #include "Presence.h"
 #include "ProtocolParser.h"
+#include "WallClock.h"
 #include "app/Settings.h"
 #include "transport/SerialTransport.h"
 #include "ui/DisplayManager.h"
@@ -32,7 +33,7 @@ class App : public proto::ParserListener {
  private:
   static constexpr size_t kMaxCoreName = 63;
 
-  enum class Screen : uint8_t { Splash, Core, Waiting, Other };
+  enum class Screen : uint8_t { Splash, Core, Menu, IdleClock, Waiting, Other };
 
   void handle(const proto::Command& cmd, std::string_view line);
   static bool changesScreen(proto::CommandId id);
@@ -41,7 +42,10 @@ class App : public proto::ParserListener {
   void handleConfig(std::string_view args);
   void sendConfig();
   void setCore(std::string_view name);
-  void showCore();
+  // fade: the core changed (dip the backlight if enabled); false for redraws of the same core.
+  void showCore(bool fade = false);
+  void showMenu(bool dimmed);
+  void setTime(std::string_view args);
   void showSplash();
   void setContrast(std::string_view args);
   void setRotation(std::string_view args);
@@ -59,6 +63,11 @@ class App : public proto::ParserListener {
   proto::ProtocolParser parser_;
   presence::Presence presence_;
   Screen screen_ = Screen::Splash;
+  wallclock::WallClock clock_;
+  int64_t shownMinute_ = -1;  // minute on the clock screen, to redraw when it changes
+  char ip_[48] = {};
+  // CMDCOR's transition: 0 means "no effect" for that core change.
+  bool nextCoreFades_ = true;
 
   char coreName_[kMaxCoreName + 1] = {};
   size_t coreNameLength_ = 0;

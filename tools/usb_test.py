@@ -42,6 +42,7 @@ def main():
     path = sys.argv[1]
 
     with Port(path) as port:
+        port.write("CMDSTTYACK,1\n")  # our daemon turns acks off while it runs
         reply = port.query("MDSPING", token="ttyack;")
         check("MDSPING -> MDSPONG;up=<ms> + ttyack",
               reply is not None and re.match(rb"^MDSPONG;up=\d+\nttyack;", reply) is not None, repr(reply))

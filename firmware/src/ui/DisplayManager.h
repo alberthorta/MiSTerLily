@@ -12,6 +12,18 @@ class DisplayManager {
 
   lgfx::LovyanGFX& canvas();
   void present();
+  // Like present(), but dips the backlight: down, swap the frame, up again. Runs from tick();
+  // nothing waits. Falls back to present() when the light is off anyway.
+  void presentFaded(uint32_t nowMs);
+  void tick(uint32_t nowMs);
+  bool fading() const { return fade_ != Fade::None; }
+  // The next present() fades (screens call present() themselves). Cleared after that call or by
+  // disarmFade() if the screen did not present after all.
+  void armFade(uint32_t nowMs) {
+    fadeArmed_ = true;
+    fadeArmedMs_ = nowMs;
+  }
+  void disarmFade() { fadeArmed_ = false; }
 
   // Remembered while asleep: wake() restores it.
   void setBrightness(uint8_t level);
@@ -37,4 +49,13 @@ class DisplayManager {
   bool awake_ = true;
   bool backlightOn_ = true;
   uint8_t brightness_ = 0;
+
+  enum class Fade : uint8_t { None, Out, In };
+  void finishFade();
+  Fade fade_ = Fade::None;
+  bool fadeArmed_ = false;
+  uint32_t fadeArmedMs_ = 0;
+  uint32_t fadeStartMs_ = 0;
+  uint8_t fadeFrom_ = 0;   // backlight level when the fade-out started
+  uint8_t level_ = 0;      // backlight level being shown during a fade
 };

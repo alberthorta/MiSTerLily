@@ -15,10 +15,14 @@ class Settings {
   uint8_t contrast() const { return contrast_; }  // CMDCON scale 0..255
   bool rotated() const { return rotated_; }       // CMDROT,1
   uint16_t idleMinutes() const { return idleMinutes_; }  // 0 = never sleep
+  bool fade() const { return fade_; }            // backlight dip on core changes
+  bool idleClock() const { return idleClock_; }  // idle: dim clock instead of backlight off
 
   void setContrast(uint8_t v);
   void setRotated(bool v);
   void setIdleMinutes(uint16_t v);
+  void setFade(bool v);
+  void setIdleClock(bool v);
   void resetToDefaults();
 
   // CMDCON is OLED contrast (tty2oled default 100). On a backlit TFT 0 must not mean "black",
@@ -29,4 +33,6 @@ class Settings {
   uint8_t contrast_ = kDefaultContrast;
   bool rotated_ = false;
   uint16_t idleMinutes_ = 0;
+  bool fade_ = true;
+  bool idleClock_ = false;
 };
