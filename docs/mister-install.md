@@ -15,6 +15,21 @@ Two modes:
 Needs `python3` on the MiSTer (native mode). The MiSTer Linux image has it: `update_all` is a Python
 program run directly by the system.
 
+## Quick way: the one-file installer
+
+`python3 tools/make_mister_installer.py` builds `dist/misterlily_install.sh`, a single script with
+everything inside (daemon, scripts, default config, start-up picture). Copy it to
+`/media/fat/Scripts/` and run it once from the MiSTer Scripts menu. It does steps 1 and 3 below,
+also before tty2oled is installed: it writes `TTY2OLED_UPDATE="no"` and a `_S60tty2oled` marker,
+so a later tty2oled install (for its logos) never installs a second daemon or flashes the board.
+
+**On a fresh Mr. Fusion card** (before its first boot), put the file in the `Scripts` folder of the
+`MRFUSION` drive. Mr. Fusion re-partitions the card on first boot and keeps only the files in
+`Scripts/` (plus `config/`, `wpa_supplicant.conf`, `samba.sh`), so it ends up in
+`/media/fat/Scripts`. After the MiSTer menu appears, run it from the Scripts menu once.
+When copying from a Mac, make sure no `._misterlily_install.sh` file is left next to it
+(`xattr -c` the file and delete the `._` file); Mr. Fusion would copy it as a broken script.
+
 ## 1. Protect the board from the tty2oled firmware updater
 
 The tty2oled updater can flash its own (OLED) firmware onto any ESP32 it finds, and it resets the
