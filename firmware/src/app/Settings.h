@@ -7,7 +7,7 @@
 // CMDROT every time its daemon starts.
 class Settings {
  public:
-  static constexpr uint8_t kDefaultContrast = 255;
+  static constexpr uint8_t kDefaultContrast = 200;
   static constexpr uint16_t kMaxIdleMinutes = 1440;
 
   void load();

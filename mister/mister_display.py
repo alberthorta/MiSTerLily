@@ -42,7 +42,7 @@ DEFAULTS = {
     "USE_GSC_PICTURE": "yes",
     "USE_US_PICTURE": "no",
     "USE_TEXT_PICTURE": "no",
-    "CONTRAST": "255",
+    "CONTRAST": "200",
     "ROTATE": "no",
     "IDLE_MINUTES": "",  # backlight off after this many minutes without a core change; "" = keep the board's
     "IDLE_SCREEN": "",  # what idle shows: "off" (dark) or "clock" (dim clock); "" = keep the board's

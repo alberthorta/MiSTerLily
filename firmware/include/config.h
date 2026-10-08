@@ -46,6 +46,4 @@ constexpr int kScreenHeight = 170;
 constexpr uint8_t kRotationNormal = 0;
 constexpr uint8_t kRotationFlipped = 2;
 
-constexpr uint8_t kDefaultBrightness = 200;
-
 }  // namespace cfg
