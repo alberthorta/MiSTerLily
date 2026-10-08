@@ -6,9 +6,9 @@ When MiSTer loads a core, the display shows that system's logo and name.
 It speaks the serial protocol of [MiSTer_tty2oled](https://github.com/venice1200/MiSTer_tty2oled),
 so the unmodified tty2oled daemon and its picture library drive it over native USB.
 
-Status: **Phase 5** in progress — tty2oled compatibility works end to end on the bench (board + real
-tty2oled daemon in a Linux container); colour PNG/JPEG pictures work on the board (the MiSTer-side
-daemon that sends them is next). Not yet tested on a real MiSTer.
+Status: **Phase 5** — colour PNG/JPEG pictures and our own MiSTer daemon (colour picture → tty2oled
+logo → core name, automatic reconnection) work on the bench: board on a Mac, scripts in Linux
+containers. tty2oled compatibility mode works too. Not yet tested on a real MiSTer.
 
 ## Hardware
 
@@ -47,7 +47,8 @@ wait instead of losing data. Why not Arduino `Serial`: see [docs/research.md](do
 
 ## Testing on a Mac (no MiSTer needed)
 
-All tools use only the Python standard library (no pyserial); they also run on the MiSTer.
+All tools use only the Python standard library (no pyserial), except `convert_asset.py` (Pillow).
+Shared code lives in `mister/` (`mdsserial.py`, `pictures.py`), which also runs on the MiSTer.
 
 ```sh
 python3 tools/usb_test.py   /dev/cu.usbmodemXXXX            # USB link checks
@@ -67,15 +68,23 @@ Other tests:
 
 ```sh
 bash tests/mister/test_find_display.sh                     # find-display.sh against a fake sysfs
-bash tests/mister/run_tty2oled_e2e.sh                      # real tty2oled.sh in Docker vs fake_mister.py
+bash tests/mister/run_e2e.sh                               # Docker: real tty2oled.sh, and our daemon
 python3 tools/fake_mister.py --selftest <Pictures folder>  # picture decoding vs tail | xxd
 python3 tests/fixtures/make_fixtures.py                    # rebuild the parser test fixtures
+python3 tests/fixtures/make_art.py                         # rebuild the colour test pictures
 ```
 
 ## Installing on the MiSTer
 
 See [docs/mister-install.md](docs/mister-install.md). In short: set `TTY2OLED_UPDATE="no"`, install
-tty2oled with its updater, copy `mister/` to `/media/fat/MiSTerLily` and run `install.sh`.
+tty2oled with its updater (for its logo library), copy `mister/` to `/media/fat/MiSTerLily` and run
+`install.sh`. Colour pictures go to `/media/fat/MiSTerLily/art/<core>.png`.
+
+The daemon can also run on a Mac/Linux PC for testing:
+
+```sh
+python3 mister/mister_display.py --device /dev/cu.usbmodemXXXX --corename /tmp/CORENAME --config my.ini -v
+```
 
 ## Colour pictures
 
@@ -120,8 +129,8 @@ Full command list: [docs/protocol.md](docs/protocol.md).
 - tty2oled pictures are monochrome/greyscale and 256×64. Scaled 1.25× with area averaging, edges
   are slightly soft. Native colour artwork is Phase 5.
 - If nobody reads the replies, one `ttyack;` stays in the USB FIFO and reaches the next reader first.
-- After unplugging/replugging the display, restart the tty2oled daemon (it sets the port up only at
-  start).
+- tty2oled mode only: after unplugging/replugging the display, restart the tty2oled daemon (it sets
+  the port up only at start). The native daemon reconnects by itself.
 
 ## Licence and credits
 

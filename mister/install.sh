@@ -1,18 +1,17 @@
 #!/bin/bash
-# Set up MiSTerLily on a MiSTer that already runs tty2oled (venice1200/MiSTer_tty2oled).
+# Install MiSTerLily on a MiSTer.
 #
-# Phase 4 uses the upstream tty2oled daemon unchanged. This script only:
-#   1. copies find-display.sh and config.ini to /media/fat/MiSTerLily,
-#   2. asks the connected display who it is (CMDHWINF) and stores its USB serial number,
-#   3. adds a marked block at the end of /media/fat/tty2oled/tty2oled-user.ini:
-#        TTYDEV = whatever find-display.sh finds each time tty2oled starts (/dev/ttyACM0 if nothing)
-#        TTY2OLED_UPDATE="no"  (the tty2oled updater must never flash its own firmware onto this board)
-#   4. restarts the tty2oled daemon.
+#   install.sh             native mode (default): our daemon shows colour pictures from
+#                          /media/fat/MiSTerLily/art, falls back to the tty2oled pictures, then the
+#                          core name. The tty2oled daemon is disabled the way tty2oled itself does it
+#                          (S60tty2oled -> _S60tty2oled); its pictures and updater keep working.
+#   install.sh --tty2oled  compatibility mode: keep the unmodified tty2oled daemon and only point it
+#                          at the display (TTYDEV in tty2oled-user.ini).
+#   install.sh --no-start  do not start anything now (it starts at the next boot).
 #
-# tty2oled's own updater creates tty2oled-user.ini only when it is missing, so the block survives
-# tty2oled updates. Run uninstall.sh to remove it.
-#
-# Usage: install.sh [--no-restart]
+# In both modes tty2oled-user.ini gets a marked block with TTYDEV and TTY2OLED_UPDATE="no", so the
+# tty2oled updater never tries to flash its own firmware onto this board.
+# Run it again to switch modes; uninstall.sh undoes everything.
 # Test hook: MDS_FAT (default /media/fat).
 
 set -u
@@ -21,67 +20,105 @@ SRC="$(cd "$(dirname "$0")" && pwd)"
 DEST="$FAT/MiSTerLily"
 T2O="$FAT/tty2oled"
 USER_INI="$T2O/tty2oled-user.ini"
+USER_STARTUP="$FAT/linux/user-startup.sh"
 BEGIN_MARK="# >>> MiSTerLily (managed by MiSTerLily/install.sh, remove with uninstall.sh)"
 END_MARK="# <<< MiSTerLily"
+STARTUP_LINE="[[ -e $DEST/S60misterlily ]] && $DEST/S60misterlily \$1"
 
-restart=yes
+mode=native
+start=yes
 for arg in "$@"; do
   case "$arg" in
-    --no-restart) restart=no ;;
+    --tty2oled) mode=tty2oled ;;
+    --native) mode=native ;;
+    --no-start|--no-restart) start=no ;;
     -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
     *) echo "unknown option: $arg" >&2; exit 2 ;;
   esac
 done
 
-if [ ! -d "$T2O" ]; then
-  echo "tty2oled is not installed ($T2O missing)."
-  echo "Install it first with its updater (see docs/mister-install.md), with the display UNPLUGGED."
-  exit 1
-fi
+# Sets KEY="value" in config.ini, keeping every other line.
+set_config() {
+  local tmp="$DEST/config.ini.tmp"
+  grep -v "^$1=" "$DEST/config.ini" 2>/dev/null >"$tmp"
+  echo "$1=\"$2\"" >>"$tmp"
+  mv -f "$tmp" "$DEST/config.ini"
+}
+get_config() { sed -n "s/^$1=\"\{0,1\}\([^\"]*\)\"\{0,1\}[[:space:]]*\$/\1/p" "$DEST/config.ini" 2>/dev/null | tail -n 1; }
+
+remove_block() {  # file
+  [ -f "$1" ] || return 0
+  awk -v b="$BEGIN_MARK" -v e="$END_MARK" '
+    $0 == b { skip = 1; next }
+    $0 == e { skip = 0; next }
+    !skip { print }' "$1" >"$1.mds.tmp" && mv -f "$1.mds.tmp" "$1"
+}
 
 # 1. Files
-mkdir -p "$DEST"
+mkdir -p "$DEST/art"
 if [ "$SRC" != "$DEST" ]; then
-  cp -f "$SRC/find-display.sh" "$SRC/uninstall.sh" "$DEST/"
+  for f in find-display.sh uninstall.sh install.sh mister_display.py mdsserial.py pictures.py S60misterlily; do
+    cp -f "$SRC/$f" "$DEST/"
+  done
   [ -e "$DEST/config.ini" ] || cp -f "$SRC/config.ini" "$DEST/"
 fi
-chmod +x "$DEST/find-display.sh" "$DEST/uninstall.sh" 2>/dev/null || true  # FAT may refuse; bash runs them anyway
+chmod +x "$DEST"/*.sh "$DEST/S60misterlily" 2>/dev/null || true  # FAT may refuse; bash runs them anyway
 
-# 2. Identify the display. With a restart coming, stop the daemon so it does not write while we ask
-# (an idle daemon only writes when /tmp/CORENAME changes, so --no-restart leaves it running).
-[ "$restart" = yes ] && [ -x "$T2O/S60tty2oled" ] && "$T2O/S60tty2oled" stop >/dev/null 2>&1
+# 2. Stop whatever talks to the display now
+[ -x "$DEST/S60misterlily" ] && bash "$DEST/S60misterlily" stop >/dev/null 2>&1
+[ -e "$T2O/S60tty2oled" ] && bash "$T2O/S60tty2oled" stop >/dev/null 2>&1
+
+# 3. Identify the display and remember its USB serial number
 echo "Looking for the display..."
-dev="$(MDS_CONFIG=/dev/null bash "$DEST/find-display.sh" --probe)"
-if [ -n "$dev" ]; then
-  serial="$(MDS_CONFIG=/dev/null bash "$DEST/find-display.sh" --probe --quiet --serial)"
-  echo "Found $dev (USB serial $serial)."
-  tmp="$DEST/config.ini.tmp"
-  grep -v '^MDS_SERIAL=' "$DEST/config.ini" 2>/dev/null >"$tmp"
-  echo "MDS_SERIAL=\"$serial\"" >>"$tmp"
-  mv -f "$tmp" "$DEST/config.ini"
+serial="$(MDS_CONFIG=/dev/null bash "$DEST/find-display.sh" --probe --quiet --serial)"
+if [ -n "$serial" ]; then
+  echo "Found it (USB serial $serial)."
+  set_config MDS_SERIAL "$serial"
 else
-  echo "No MiSTerLily display answered. Continuing: tty2oled will use the first ESP32-S3"
-  echo "serial port it finds, or /dev/ttyACM0. Plug the display in and run install.sh again to pin it."
+  echo "No MiSTerLily display answered. It will be used as soon as it is plugged in."
 fi
 
-# 3. tty2oled-user.ini block (replace an old one, keep everything else)
-touch "$USER_INI"
-tmp="$USER_INI.mds.tmp"
-awk -v b="$BEGIN_MARK" -v e="$END_MARK" '
-  $0 == b { skip = 1; next }
-  $0 == e { skip = 0; next }
-  !skip { print }' "$USER_INI" >"$tmp"
-cat >>"$tmp" <<EOF
+# 4. tty2oled-user.ini block (both modes)
+if [ -d "$T2O" ]; then
+  touch "$USER_INI"
+  remove_block "$USER_INI"
+  cat >>"$USER_INI" <<EOF
 $BEGIN_MARK
 TTYDEV="\$(bash $DEST/find-display.sh --quiet 2>/dev/null || echo /dev/ttyACM0)"
 TTY2OLED_UPDATE="no"
 $END_MARK
 EOF
-mv -f "$tmp" "$USER_INI"
-echo "Updated $USER_INI"
-
-# 4. Restart
-if [ "$restart" = yes ] && [ -x "$T2O/S60tty2oled" ]; then
-  "$T2O/S60tty2oled" start
+  echo "Updated $USER_INI"
 fi
-echo "Done. Test with: echo SNES > /tmp/CORENAME"
+
+# 5. Who runs at boot
+mkdir -p "$(dirname "$USER_STARTUP")"
+if [ ! -e "$USER_STARTUP" ]; then
+  if [ -e "$FAT/linux/_user-startup.sh" ]; then cp "$FAT/linux/_user-startup.sh" "$USER_STARTUP"
+  else printf '#!/bin/sh\n\necho "***" $1 "***"\n' >"$USER_STARTUP"; fi
+fi
+grep -v -F "$DEST/S60misterlily" "$USER_STARTUP" >"$USER_STARTUP.mds.tmp" && mv -f "$USER_STARTUP.mds.tmp" "$USER_STARTUP"
+
+if [ "$mode" = native ]; then
+  printf '\n# Startup MiSTerLily\n%s\n' "$STARTUP_LINE" >>"$USER_STARTUP"
+  if [ -e "$T2O/S60tty2oled" ]; then
+    mv -f "$T2O/S60tty2oled" "$T2O/_S60tty2oled"
+    set_config MDS_DISABLED_TTY2OLED yes
+    echo "Disabled the tty2oled daemon (S60tty2oled -> _S60tty2oled); its pictures stay in use."
+  fi
+  set_config MDS_MODE native
+  [ "$start" = yes ] && bash "$DEST/S60misterlily" start
+else
+  if [ "$(get_config MDS_DISABLED_TTY2OLED)" = yes ] && [ -e "$T2O/_S60tty2oled" ]; then
+    mv -f "$T2O/_S60tty2oled" "$T2O/S60tty2oled"
+    echo "Enabled the tty2oled daemon again."
+  fi
+  set_config MDS_DISABLED_TTY2OLED no
+  set_config MDS_MODE tty2oled
+  if [ ! -e "$T2O/S60tty2oled" ]; then
+    echo "tty2oled is not installed: install it first (docs/mister-install.md)."
+    exit 1
+  fi
+  [ "$start" = yes ] && bash "$T2O/S60tty2oled" start
+fi
+echo "Done ($mode mode). Test with: echo SNES > /tmp/CORENAME"

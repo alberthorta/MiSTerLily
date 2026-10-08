@@ -18,8 +18,8 @@ import sys
 import threading
 import time
 
-sys.path.insert(0, "/src/tools")
-from fake_mister import decode_picture, find_picture  # noqa: E402
+sys.path.insert(0, "/src/mister")
+from pictures import decode_picture, find_picture  # noqa: E402
 
 PICS = "/media/fat/tty2oled/pics"
 CORES = ["SNES", "Atari5200", "MDSTEST", "PSX"]  # Atari5200 has no picture -> bare name
@@ -61,7 +61,7 @@ def main():
     # Output to a file, not a pipe: the daemon that install.sh starts in the background would keep
     # a pipe open and run() would never return.
     with open("/tmp/install.log", "w") as log:
-        rc = subprocess.run(["bash", "/src/mister/install.sh"], stdout=log, stderr=subprocess.STDOUT).returncode
+        rc = subprocess.run(["bash", "/src/mister/install.sh", "--tty2oled"], stdout=log, stderr=subprocess.STDOUT).returncode
     print(open("/tmp/install.log").read())
     check("install.sh exit 0", rc == 0)
 
@@ -104,7 +104,7 @@ def main():
 
     # Installing twice keeps one block; uninstall removes it and keeps the user's own lines.
     with open("/tmp/install.log", "w") as log:
-        subprocess.run(["bash", "/src/mister/install.sh", "--no-restart"], stdout=log, stderr=subprocess.STDOUT)
+        subprocess.run(["bash", "/src/mister/install.sh", "--tty2oled", "--no-start"], stdout=log, stderr=subprocess.STDOUT)
     ini = open("/media/fat/tty2oled/tty2oled-user.ini").read()
     check("install twice -> one block", ini.count("# >>> MiSTerLily") == 1 and ini.count("# <<< MiSTerLily") == 1)
     with open("/tmp/uninstall.log", "w") as log:

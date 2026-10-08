@@ -9,7 +9,7 @@ import sys
 import time
 import zlib
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "mister"))
 from mdsserial import Port  # noqa: E402
 
 

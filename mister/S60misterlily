@@ -1,0 +1,39 @@
+#!/bin/bash
+# Start/stop the MiSTerLily daemon. Called from /media/fat/linux/user-startup.sh at boot.
+
+DIR="$(cd "$(dirname "$0")" && pwd)"
+PIDFILE="/run/mister-display.pid"
+LOG="/tmp/mister-display.log"
+
+running() { [ -e "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; }
+
+start() {
+  if running; then
+    echo "mister-display already running"
+    return 0
+  fi
+  if ! command -v python3 >/dev/null; then
+    echo "python3 not found; MiSTerLily needs it" >&2
+    return 1
+  fi
+  echo "Starting mister-display..."
+  # The daemon waits for the display itself, so a late USB hub is not a problem.
+  nohup python3 "$DIR/mister_display.py" --config "$DIR/config.ini" >"$LOG" 2>&1 &
+  echo $! >"$PIDFILE"
+}
+
+stop() {
+  if running; then
+    echo "Stopping mister-display..."
+    kill "$(cat "$PIDFILE")" 2>/dev/null
+  fi
+  rm -f "$PIDFILE"
+}
+
+case "$1" in
+  start) start ;;
+  stop) stop ;;
+  restart) stop; sleep 0.5; start ;;
+  status) if running; then echo "running (pid $(cat "$PIDFILE"))"; else echo "stopped"; exit 1; fi ;;
+  *) echo "Usage: $0 {start|stop|restart|status}"; exit 1 ;;
+esac
