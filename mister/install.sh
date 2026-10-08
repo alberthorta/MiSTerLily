@@ -24,6 +24,8 @@ USER_STARTUP="$FAT/linux/user-startup.sh"
 BEGIN_MARK="# >>> MiSTerLily (managed by MiSTerLily/install.sh, remove with uninstall.sh)"
 END_MARK="# <<< MiSTerLily"
 STARTUP_LINE="[[ -e $DEST/S60misterlily ]] && $DEST/S60misterlily \$1"
+# tty2oled's updater does not install its daemon when this file exists (its own "disabled" marker).
+PLACEHOLDER_MARK="# MiSTerLily placeholder"
 
 mode=native
 start=yes
@@ -78,7 +80,9 @@ else
   echo "No MiSTerLily display answered. It will be used as soon as it is plugged in."
 fi
 
-# 4. tty2oled-user.ini block (both modes)
+# 4. tty2oled-user.ini block (both modes). In native mode it is written even before tty2oled is
+# installed, so its updater never offers to flash this board.
+[ "$mode" = native ] && mkdir -p "$T2O"
 if [ -d "$T2O" ]; then
   touch "$USER_INI"
   remove_block "$USER_INI"
@@ -97,19 +101,31 @@ if [ ! -e "$USER_STARTUP" ]; then
   if [ -e "$FAT/linux/_user-startup.sh" ]; then cp "$FAT/linux/_user-startup.sh" "$USER_STARTUP"
   else printf '#!/bin/sh\n\necho "***" $1 "***"\n' >"$USER_STARTUP"; fi
 fi
-grep -v -F "$DEST/S60misterlily" "$USER_STARTUP" >"$USER_STARTUP.mds.tmp" && mv -f "$USER_STARTUP.mds.tmp" "$USER_STARTUP"
+grep -v -F "$DEST/S60misterlily" "$USER_STARTUP" | grep -v -x '# Startup MiSTerLily' >"$USER_STARTUP.mds.tmp" &&
+  mv -f "$USER_STARTUP.mds.tmp" "$USER_STARTUP"
 
 if [ "$mode" = native ]; then
-  printf '\n# Startup MiSTerLily\n%s\n' "$STARTUP_LINE" >>"$USER_STARTUP"
+  [ -n "$(tail -c 1 "$USER_STARTUP")" ] && echo >>"$USER_STARTUP"  # no newline at the end
+  printf '# Startup MiSTerLily\n%s\n' "$STARTUP_LINE" >>"$USER_STARTUP"
   if [ -e "$T2O/S60tty2oled" ]; then
     mv -f "$T2O/S60tty2oled" "$T2O/_S60tty2oled"
     set_config MDS_DISABLED_TTY2OLED yes
     echo "Disabled the tty2oled daemon (S60tty2oled -> _S60tty2oled); its pictures stay in use."
+  elif [ ! -e "$T2O/_S60tty2oled" ]; then
+    # tty2oled not installed yet: if it is installed later for its pictures, its updater must not
+    # install a second daemon that fights ours for the display.
+    printf '#!/bin/bash
+%s: keeps the tty2oled updater from installing its daemon.
+' "$PLACEHOLDER_MARK" \
+      >"$T2O/_S60tty2oled"
+    set_config MDS_DISABLED_TTY2OLED placeholder
   fi
   set_config MDS_MODE native
   [ "$start" = yes ] && bash "$DEST/S60misterlily" start
 else
-  if [ "$(get_config MDS_DISABLED_TTY2OLED)" = yes ] && [ -e "$T2O/_S60tty2oled" ]; then
+  if grep -q "$PLACEHOLDER_MARK" "$T2O/_S60tty2oled" 2>/dev/null; then
+    rm -f "$T2O/_S60tty2oled"
+  elif [ "$(get_config MDS_DISABLED_TTY2OLED)" = yes ] && [ -e "$T2O/_S60tty2oled" ]; then
     mv -f "$T2O/_S60tty2oled" "$T2O/S60tty2oled"
     echo "Enabled the tty2oled daemon again."
   fi

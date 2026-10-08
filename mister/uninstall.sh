@@ -31,7 +31,9 @@ if [ -f "$USER_INI" ]; then
   echo "Removed the MiSTerLily block from $USER_INI"
 fi
 
-if grep -q '^MDS_DISABLED_TTY2OLED="yes"' "$DEST/config.ini" 2>/dev/null && [ -e "$T2O/_S60tty2oled" ]; then
+if grep -q "# MiSTerLily placeholder" "$T2O/_S60tty2oled" 2>/dev/null; then
+  rm -f "$T2O/_S60tty2oled"
+elif grep -q '^MDS_DISABLED_TTY2OLED="yes"' "$DEST/config.ini" 2>/dev/null && [ -e "$T2O/_S60tty2oled" ]; then
   mv -f "$T2O/_S60tty2oled" "$T2O/S60tty2oled"
   echo "Enabled the tty2oled daemon again."
 fi
