@@ -3,6 +3,7 @@
 #include <LovyanGFX.hpp>
 
 #include "config.h"
+#include "hal/BacklightAw9364.h"
 
 // ST7789 on the ESP32-S3 i80 (8-bit parallel) bus, as wired on the T-Display-S3.
 // Values follow LILYGO's own LovyanGFX examples (examples/T-Display-S3-Queue).
@@ -43,20 +44,12 @@ class Lgfx : public lgfx::LGFX_Device {
       c.bus_shared = false;
       panel_.config(c);
     }
-    {
-      auto c = light_.config();
-      c.pin_bl = cfg::pin::kLcdBacklight;
-      c.invert = false;
-      c.freq = cfg::lcd::kBacklightPwmHz;
-      c.pwm_channel = cfg::lcd::kBacklightPwmChannel;
-      light_.config(c);
-      panel_.setLight(&light_);
-    }
+    panel_.setLight(&light_);
     setPanel(&panel_);
   }
 
  private:
   lgfx::Bus_Parallel8 bus_;
   lgfx::Panel_ST7789 panel_;
-  lgfx::Light_PWM light_;
+  BacklightAw9364 light_{cfg::pin::kLcdBacklight};
 };

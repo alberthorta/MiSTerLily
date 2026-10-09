@@ -214,7 +214,10 @@ Other bench facts:
   its `User_Setup` selected by editing the library or by many build flags, and LILYGO ships a patched copy.
 - LILYGO's newest examples use LovyanGFX with the same config we will use.
 - Sprites in PSRAM: one 320×170 RGB565 framebuffer (≈109 KB) pushed in one DMA transfer, no flicker.
-- PWM backlight built in, which gives `CMDCON` (contrast 0..255) → brightness for free.
+- The backlight is not PWM: the board drives it through an AW9364 LED driver with 16 levels, set by
+  pulses on GPIO 38 (LILYGO `examples/factory/factory.ino`, `setBrightness()`). LovyanGFX's `Light_PWM`
+  looked fine with a fixed duty, but the fades changed the duty, the chip counted those edges as pulses,
+  and the screen ended dim. `src/hal/BacklightAw9364.h` sends the pulses itself.
 
 ## 8. Rendering legacy artwork
 

@@ -34,8 +34,6 @@ constexpr int kNativeHeight = 320;
 // The ST7789 has 240 columns; the 170-pixel glass starts at column 35.
 constexpr int kColumnOffset = 35;
 constexpr uint32_t kWriteClockHz = 16000000;
-constexpr uint32_t kBacklightPwmHz = 22000;
-constexpr int kBacklightPwmChannel = 7;
 }  // namespace lcd
 
 constexpr int kScreenWidth = 320;

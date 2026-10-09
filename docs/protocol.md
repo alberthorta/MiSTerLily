@@ -49,7 +49,7 @@ The host should set the port raw (`stty ... raw -echo -hupcl`), like tty2oled do
 | `CMDDUPD` | Update the screen from the frame buffer |
 | `CMDCLST,t,c` | Fill with grey level `c`, forget the stored picture |
 | `CMDDOFF` / `CMDDON` | Backlight and panel off / on (content kept) |
-| `CMDCON,<0..255>` | Brightness: maps to backlight 40..255 (0 is dim, not black) |
+| `CMDCON,<0..255>` | Brightness: one of the 16 backlight levels, 0 → level 3, 255 → level 16 (0 is dim, not black) |
 | `CMDROT,<0\|1>` | 1 = turned 180° |
 | `CMDTXT,f,c,b,x,y,text` | Text in a 256×64 area centered on the screen; fonts mapped to similar ones; `f >= 100` = buffer only |
 | `CMDGEO,g,c,x,y,i,j,k,l` | Figures 1..10 in the same 256×64 area; `g >= 100` = buffer only |
@@ -126,5 +126,6 @@ MDSIMG,<bytes>,<crc32>,<png|jpg>,<core>\n
   on the `spiffs` data partition, which firmware uploads do not touch.
 - **Menu screen**: a core named `MENU` without a picture shows time, date and the IP from `MDSNET`
   (once the time is known), redrawn every minute.
-- **Fade**: the backlight goes down (120 ms), the new frame is pushed, and it comes back (180 ms).
+- **Fade**: the backlight goes down (120 ms), the new frame is pushed, and it comes back (180 ms),
+  in steps of the 16 backlight levels.
   The main loop keeps running during the fade.
